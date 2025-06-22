@@ -1,0 +1,97 @@
+{
+    "name": "slang-language-extension",
+    "displayName": "Slang",
+    "description": "Extension for the Slang Shading Language",
+    "publisher": "shader-slang",
+    "version": "1.9.10",
+    "icon": "./images/icon.png",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Microsoft/vscode-extension-samples"
+	},
+	"engines": {
+		"vscode": "^1.85.0"
+	},
+    "keywords": [
+        "shader",
+        "shading",
+        "hlsl",
+        "slang",
+        "highlight",
+        "completion",
+        "hinting",
+        "formatting"
+    ],
+    "categories": [
+        "Programming Languages",
+        "Formatters"
+    ],
+    "activationEvents": [
+        "onLanguage:slang"
+    ],
+	"browser": "./client/dist/browserClientMain",
+	"contributes": {
+        "languages": [
+            {
+                "id": "slang",
+                "aliases": [
+                    "Slang",
+                    "slang",
+                    "hlsl"
+                ],
+                "extensions": [
+                    ".slang",
+                    ".slangh",
+                    ".hlsl",
+                    ".usf",
+                    ".ush",
+                    ".vfx",
+                    ".fxc"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "slang",
+                "scopeName": "source.slang",
+                "path": "./syntaxes/slang.tmLanguage.json"
+            }
+        ],
+		"configuration": [
+			{
+				"order": 22,
+				"id": "lsp-web-extension-sample",
+				"title": "lsp-web-extension-sample",
+				"properties": {
+					"lsp-web-extension-sample.trace.server": {
+						"type": "string",
+						"scope": "window",
+						"enum": [
+							"off",
+							"messages",
+							"verbose"
+						],
+						"default": "verbose",
+						"description": "Traces the communication between VS Code and the lsp-web-extension-sample language server."
+					}
+				}
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "node esbuild.config.mjs",
+		"watch": "esbuild --config=esbuild.config.mjs --watch",
+		"package": "node esbuild.config.mjs",
+		"postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
+		"chrome": "npm run compile && vscode-test-web --browserType=chromium --extensionDevelopmentPath=. ./test-data"
+	},
+	"devDependencies": {
+		"@vscode/test-web": "^0.0.70",
+		"esbuild": "^0.25.5",
+		"eslint": "^9.29.0",
+		"path-browserify": "^1.0.1",
+		"typescript": "^5.8.2"
+	}
+}
