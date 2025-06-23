@@ -4,14 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 import { createConnection, BrowserMessageReader, BrowserMessageWriter } from 'vscode-languageserver/browser';
 
-import { Color, ColorInformation, Range, InitializeParams, InitializeResult, ServerCapabilities, TextDocuments, ColorPresentation, TextEdit, TextDocumentIdentifier, TextDocumentSyncKind, Hover, MarkupKind, Definition, DocumentSymbol, Location, SignatureHelp, CompletionItemKind, CompletionItem, SignatureInformation, ParameterInformation } from 'vscode-languageserver';
+import { InitializeParams, InitializeResult, TextDocuments, TextDocumentSyncKind, MarkupKind, DocumentSymbol, Location, SignatureHelp, CompletionItemKind, CompletionItem, SignatureInformation, ParameterInformation, TextDocumentContentChangeEvent } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { LanguageServer, MainModule, CompletionContext } from '../../media/slang-wasm';
-
-console.log('running server lsp-web-extension-sample');
-
-
 
 // We'll set these after dynamic import
 let slangd: LanguageServer;
@@ -24,11 +20,23 @@ function getPublicUrl(filename: string): string {
 	return '/media/' + filename;
 }
 
-function translateURI(uri: string): string {
+function getEmscriptenURI(uri: string): string {
 	const prefix = "vscode-test-web://";
 	if (uri.startsWith(prefix))
-		return uri.slice(prefix.length);
+		uri = uri.slice(prefix.length)
 	return uri;
+}
+
+function getSlangdURI(uri: string): string {
+	return `file:///${getEmscriptenURI(uri)}`;
+}
+
+function vscodeURIFromSlangdURI(uri: string): string {
+	const prefix = "file:///";
+	if (uri.startsWith(prefix))
+		uri = uri.slice(prefix.length)
+	return `vscode-test-web://${uri}`;
+
 }
 
 function convertDocumentSymbol(sym: any): DocumentSymbol {
@@ -69,6 +77,27 @@ function getResourceUrl(filename: string): string {
 	return getPublicUrl(filename);
 }
 
+function loadFileIntoEmscriptenFS(uri: string) {
+	// Get relative path within the workspace
+	const splitPath = uri.split("/")
+
+	// Ensure directory structure in MEMFS
+	const name = splitPath.pop()
+	const dir = splitPath.join("/");
+	let pathData = slangWasmModule.FS.analyzePath(uri, false);
+	if (!pathData.parentExists) {
+		slangWasmModule.FS.mkdir(dir);
+	}
+
+
+	// Write the actual file
+	if(pathData.exists) {
+		console.log("file already exists " + uri)
+		return
+	}
+	slangWasmModule.FS.createDataFile(dir, name, new DataView(new ArrayBuffer(0)), true, true, false);
+}
+
 async function ensureSlangModuleLoaded() {
 	if (moduleReady) return moduleReady;
 	moduleReady = (async () => {
@@ -106,7 +135,7 @@ connection.onInitialize(async (_params: InitializeParams): Promise<InitializeRes
 	return {
 		capabilities: {
 			textDocumentSync: TextDocumentSyncKind.Incremental,
-			completionProvider: { resolveProvider: true },
+			completionProvider: { triggerCharacters: [".", ":", ">", "(", "<", " ", "["] },
 			hoverProvider: true,
 			definitionProvider: true,
 			signatureHelpProvider: { triggerCharacters: ['(', ','] },
@@ -124,34 +153,29 @@ documents.listen(connection);
 // Completion
 import { DiagnosticSeverity } from 'vscode-languageserver';
 connection.onCompletion(async (params, _token, _progress): Promise<CompletionItem[]> => {
-	const doc = documents.get(params.textDocument.uri);
-	if (!doc) return [];
 	let lspContext: CompletionContext = {
 		triggerKind: params.context!.triggerKind,
 		triggerCharacter: params.context?.hasOwnProperty("triggerCharacter") ? (params.context?.triggerCharacter || "") : ""
 	};
 	const result = slangd.completion(params.textDocument.uri, params.position, lspContext);
-	if (!result || typeof result.size !== 'function' || typeof result.get !== 'function') return [];
-	const items = [];
+	if (result == undefined) {
+		return [];
+	}
+	const items: CompletionItem[] = [];
 	for (let i = 0; i < result.size(); i++) {
 		const item = result.get(i);
 		if (!item) continue;
 		// Only use LSP fields
 		items.push({
-			label: item.label?.toString?.() ?? '',
-			kind: /*typeof item.kind === 'number' ? item.kind : */undefined,
-			detail: item.detail?.toString?.() ?? '',
-			documentation: item.documentation?.toString?.() ?? '',
+			label: item.label.toString(),
+			kind: item.kind as CompletionItemKind,
+			detail: item.detail.toString(),
+			documentation: item.documentation?.toString() ?? '',
 			data: item.data,
+			insertText: item.label.toString(),
 		});
 	}
 	return items;
-});
-
-// Completion resolve
-connection.onCompletionResolve(async (item) => {
-	// Optionally resolve more info if needed
-	return item;
 });
 
 // Hover
@@ -161,7 +185,7 @@ connection.onHover(async (params, _token) => {
 	return {
 		contents: {
 			kind: MarkupKind.Markdown,
-			value: result.contents?.toString?.() ?? ''
+			value: result.contents.value.toString()
 		},
 		range: result.range
 	};
@@ -171,17 +195,17 @@ connection.onHover(async (params, _token) => {
 connection.onDefinition(async (params, _token) => {
 	const result = slangd.gotoDefinition(params.textDocument.uri, params.position);
 	if (!result) return null;
-	// Convert custom list to array if needed, filter out undefined
-	if (typeof result.size === 'function' && typeof result.get === 'function') {
-		const arr = [];
-		for (let i = 0; i < result.size(); i++) {
-			const loc = result.get(i);
-			if (loc) arr.push(loc);
-		}
-		return arr;
+
+	const arr: Location[] = [];
+	for (let i = 0; i < result.size(); i++) {
+		let loc = result.get(i);
+		if (!loc) throw new Error("Invalid state")
+		arr.push({
+			...loc,
+			uri: vscodeURIFromSlangdURI(loc.uri.toString())
+		});
 	}
-	if (Array.isArray(result)) return result.filter(Boolean);
-	return [result];
+	return arr;
 });
 
 // Signature Help
@@ -229,25 +253,30 @@ connection.onDocumentSymbol(async (params, _token) => {
 	return symbols;
 });
 
+connection.onDidOpenTextDocument(async (params) => {
+	const uri = params.textDocument.uri;
+	const wasmURI = getSlangdURI(uri);
+	const emscriptenURI = getEmscriptenURI(uri);
+	loadFileIntoEmscriptenFS(emscriptenURI);
+	slangd.didOpenTextDocument(wasmURI, params.textDocument.text);
+});
 // Diagnostics (textDocument/didChange, didOpen, didClose handled by TextDocuments)
-documents.onDidChangeContent(async (change) => {
-	const uri = change.document.uri;
-	const wasmURI = translateURI(uri)
+connection.onDidChangeTextDocument(async (params) => {
+	const uri = params.textDocument.uri;
+	const wasmURI = getSlangdURI(uri)
 	// Try to call didChangeTextDocument with just the text (if supported)
 	try {
 		// Try to construct a TextEditList as in MonacoEditor.vue
 		let lspChanges = null;
 		lspChanges = new slangWasmModule.TextEditList();
-		lspChanges.push_back({
-			range: {
-				start: { line: 0, character: 0 },
-				end: { line: change.document.lineCount + 1, character: 0 }
-			},
-			text: change.document.getText()
-		});
+		for(const change of params.contentChanges) {
+			if (TextDocumentContentChangeEvent.isIncremental(change))
+				lspChanges.push_back(change);
+			else
+				console.error("Change should be incremental but isn't")
+		}
 		slangd.didChangeTextDocument(wasmURI, lspChanges);
 		if (lspChanges.delete) lspChanges.delete();
-		console.log(wasmURI)
 		const diagnostics = slangd.getDiagnostics?.(wasmURI);
 		if (!diagnostics || typeof diagnostics.size !== 'function' || typeof diagnostics.get !== 'function') {
 			connection.sendDiagnostics({ uri, diagnostics: [] });
