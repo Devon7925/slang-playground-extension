@@ -3,16 +3,34 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { ExtensionContext, Uri } from 'vscode';
+import { ExtensionContext, Uri, commands, window, workspace } from 'vscode';
+import * as vscode from 'vscode';
 import { LanguageClientOptions } from 'vscode-languageclient';
 
 import { LanguageClient } from 'vscode-languageclient/browser';
+import type { CompilationResult, CompileRequest } from '../../shared/playgroundInterface';
 
-let client: LanguageClient | undefined;
+let client: LanguageClient;
+const compileOptions = ['SPIRV', 'METAL', 'WGSL'] as const;
+const compileOptionMap: { [k in (typeof compileOptions)[number]]: string } = {
+	SPIRV: 'spirv',
+	METAL: 'metal',
+	WGSL: 'wgsl'
+}
+
 // this method is called when vs code is activated
 export async function activate(context: ExtensionContext) {
+	// Register a virtual document content provider for readonly docs
+	const slangVirtualScheme = 'slang-virtual';
+	const virtualDocumentContents = new Map();
 
-	console.log('lsp-web-extension-sample activated!');
+	context.subscriptions.push(
+		workspace.registerTextDocumentContentProvider(slangVirtualScheme, {
+			provideTextDocumentContent: (uri) => {
+				return virtualDocumentContents.get(uri.path.slice(1));
+			}
+		})
+	);
 
 	/*
 	 * all except the code to create the language client in not browser specific
@@ -32,7 +50,30 @@ export async function activate(context: ExtensionContext) {
 	client = createWorkerLanguageClient(context, clientOptions);
 
 	await client.start();
-	console.log('lsp-web-extension-sample server is ready');
+
+	// Register the user command
+	context.subscriptions.push(commands.registerCommand('slang.compile', async () => {
+		const targetSelection = await window.showQuickPick(compileOptions, {
+			placeHolder: 'Select a Target',
+		}) as (typeof compileOptions)[number] | undefined;
+		if (!targetSelection) {
+			return;
+		}
+		// Send the picked option to the server and get the result
+		const parameter: CompileRequest = {
+			target: targetSelection,
+			sourceCode: window.activeTextEditor.document.getText() ?? ''
+		}
+		let result: CompilationResult = await client.sendRequest('slang/compile', parameter);
+		const vDocName = `Slang Compile (${targetSelection})`
+		// Show the result in a readonly virtual document
+		const vdocUri = Uri.parse(`${slangVirtualScheme}:/${vDocName}`);
+		virtualDocumentContents.set(vDocName, result[0]);
+		const doc = await workspace.openTextDocument(vdocUri);
+		await window.showTextDocument(doc, { preview: false, viewColumn: window.activeTextEditor?.viewColumn }).then(editor => {
+			vscode.languages.setTextDocumentLanguage(doc, compileOptionMap[targetSelection]);
+		});
+	}));
 }
 
 export async function deactivate(): Promise<void> {

@@ -8,9 +8,11 @@ import { InitializeParams, InitializeResult, TextDocuments, TextDocumentSyncKind
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { LanguageServer, MainModule, CompletionContext } from '../../media/slang-wasm';
+import type { CompilationResult, CompileRequest } from '../../shared/playgroundInterface';
 
 // We'll set these after dynamic import
 let slangd: LanguageServer;
+let compiler: SlangCompiler;
 let slangWasmModule: MainModule;
 
 
@@ -91,7 +93,7 @@ function loadFileIntoEmscriptenFS(uri: string) {
 
 
 	// Write the actual file
-	if(pathData.exists) {
+	if (pathData.exists) {
 		console.log("file already exists " + uri)
 		return
 	}
@@ -115,6 +117,11 @@ async function ensureSlangModuleLoaded() {
 		};
 		// Actually instantiate the WASM module and create the language server
 		slangWasmModule = await createModule.default(moduleConfig);
+        compiler = new SlangCompiler(slangWasmModule);
+        let result = compiler.init();
+		if(!result.ret) {
+			console.error(`Failed to initialize compiler: ${result.msg}`)
+		}
 		slangd = slangWasmModule.createLanguageServer()!;
 	})();
 	return moduleReady;
@@ -152,6 +159,7 @@ documents.listen(connection);
 
 // Completion
 import { DiagnosticSeverity } from 'vscode-languageserver';
+import { SlangCompiler } from './compiler';
 connection.onCompletion(async (params, _token, _progress): Promise<CompletionItem[]> => {
 	let lspContext: CompletionContext = {
 		triggerKind: params.context!.triggerKind,
@@ -269,7 +277,7 @@ connection.onDidChangeTextDocument(async (params) => {
 		// Try to construct a TextEditList as in MonacoEditor.vue
 		let lspChanges = null;
 		lspChanges = new slangWasmModule.TextEditList();
-		for(const change of params.contentChanges) {
+		for (const change of params.contentChanges) {
 			if (TextDocumentContentChangeEvent.isIncremental(change))
 				lspChanges.push_back(change);
 			else
@@ -299,6 +307,10 @@ connection.onDidChangeTextDocument(async (params) => {
 		console.error(e)
 		connection.sendDiagnostics({ uri, diagnostics: [] });
 	}
+});
+
+connection.onRequest('slang/compile', async (params: CompileRequest): Promise<CompilationResult> => {
+	return compiler.compile(params.sourceCode, "", params.target, true)
 });
 
 // Listen on the connection

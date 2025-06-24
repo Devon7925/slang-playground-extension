@@ -30,6 +30,9 @@ async function buildAll() {
 			tsconfig: 'server/tsconfig.json',
 			define: { 'process.env.NODE_ENV': '"production"' },
 			external: [],
+			loader: {
+				'.slang': 'text',
+			},
 		});
 	} catch (err) {
 		// Use globalThis.console for ESM compatibility
