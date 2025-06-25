@@ -409,7 +409,6 @@ async function execFrame(timeMS: number, currentDisplayMode: ShaderType, playgro
         } else if (uniformComponent.type == "TIME") {
             uniformBufferView.setFloat32(offset, timeMS * 0.001, true);
         } else if (uniformComponent.type == "FRAME_ID") {
-            // provide current frame index as float
             uniformBufferView.setFloat32(offset, frameID.value, true);
         } else if (uniformComponent.type == "MOUSE_POSITION") {
             uniformBufferView.setFloat32(offset, canvasCurrentMousePos.x, true);

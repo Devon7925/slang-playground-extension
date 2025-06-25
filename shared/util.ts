@@ -352,6 +352,14 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
                     type: playground_attribute_name,
                     offset: parameter.binding.offset,
                 };
+            } else if (playground_attribute_name == "FRAME_ID") {
+                if (parameter.type.kind != "scalar" || !parameter.type.scalarType.startsWith("float") || parameter.binding.kind != "uniform") {
+                    throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports floats`)
+                }
+                command = {
+                    type: playground_attribute_name,
+                    offset: parameter.binding.offset,
+                };
             } else if (playground_attribute_name == "MOUSE_POSITION") {
                 if (parameter.type.kind != "vector" || parameter.type.elementCount <= 3 || parameter.type.elementType.kind != "scalar" || !parameter.type.elementType.scalarType.startsWith("float") || parameter.binding.kind != "uniform") {
                     throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports float vectors`)
@@ -467,6 +475,11 @@ export function getUniformControllers(resourceCommands: ResourceCommand[]): Unif
                 value: resourceCommand.parsedCommand.default,
             })
         } else if (resourceCommand.parsedCommand.type == 'TIME') {
+            controllers.push({
+                type: resourceCommand.parsedCommand.type,
+                buffer_offset: resourceCommand.parsedCommand.offset,
+            })
+        } else if (resourceCommand.parsedCommand.type == 'FRAME_ID') {
             controllers.push({
                 type: resourceCommand.parsedCommand.type,
                 buffer_offset: resourceCommand.parsedCommand.offset,
