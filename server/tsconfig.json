@@ -16,7 +16,8 @@
 	"include": [
 		"src",
 		"../media/slang-wasm.d.ts",
-		"../media/slang-wasm.js"
+		"../media/slang-wasm.js",
+		"../shared/util.ts"
 	],
 	"exclude": [
 		"node_modules",

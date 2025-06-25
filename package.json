@@ -33,6 +33,11 @@
                 "command": "slang.compile",
                 "title": "Slang Compile",
                 "category": "Slang"
+            },
+            {
+                "command": "slang.playgroundRun",
+                "title": "Run Playground",
+                "category": "Slang"
             }
         ],
         "languages": [
@@ -88,12 +93,13 @@
         "compile": "node esbuild.config.mjs",
         "watch": "esbuild --config=esbuild.config.mjs --watch",
         "package": "node esbuild.config.mjs",
-        "postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
-        "chrome": "npm run compile && vscode-test-web --browserType=chromium --extensionDevelopmentPath=. ./test-data"
+        "postinstall": "cd client && npm install && cd ../server && npm install && cd ../webview && npm install && cd ../shared && npm install && cd ..",
+        "chrome": "npm run compile && vscode-test-web --browserType=chromium --browserOption=--enable-unsafe-webgpu --extensionDevelopmentPath=. ./test-data"
     },
     "devDependencies": {
         "@vscode/test-web": "^0.0.70",
         "esbuild": "^0.25.5",
+        "esbuild-plugin-vue3": "^0.4.2",
         "eslint": "^9.29.0",
         "path-browserify": "^1.0.1",
         "typescript": "^5.8.2"

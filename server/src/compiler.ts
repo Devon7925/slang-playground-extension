@@ -2,16 +2,12 @@ import type { ComponentType, EmbindString, GlobalSession, MainModule, Module, Pr
 import playgroundSource from "./slang/playground.slang";
 import imageMainSource from "./slang/imageMain.slang";
 import printMainSource from "./slang/printMain.slang";
-import { ACCESS_MAP, getTextureFormat, sizeFromFormat, webgpuFormatfromSlangFormat } from "./util.js";
+import { ACCESS_MAP, getTextureFormat, sizeFromFormat, webgpuFormatfromSlangFormat, type RunnableShaderType, type ShaderType, RUNNABLE_ENTRY_POINT_NAMES } from "../../shared/util.js";
 import type { HashedStringData, ScalarType, ReflectionParameter, ReflectionJSON, CompilationResult, Bindings } from '../../shared/playgroundInterface.js'
 
 export function isWholeProgramTarget(compileTarget: string) {
 	return compileTarget == "METAL" || compileTarget == "SPIRV" || compileTarget == "WGSL";
 }
-
-export const RUNNABLE_ENTRY_POINT_NAMES = ['imageMain', 'printMain'] as const;
-export type RunnableShaderType = typeof RUNNABLE_ENTRY_POINT_NAMES[number];
-export type ShaderType = RunnableShaderType | null;
 
 const RUNNABLE_ENTRY_POINT_SOURCE_MAP: { [key in RunnableShaderType]: string } = {
 	'imageMain': imageMainSource,
@@ -344,7 +340,7 @@ export class SlangCompiler {
 	}
 
 	getResourceBindings(reflectionJson: ReflectionJSON): Bindings {
-		let resourceDescriptors: Bindings = new Map();
+		let resourceDescriptors: Bindings = {};
 		for (let parameter of reflectionJson.parameters) {
 			const name = parameter.name;
 			let binding = {
@@ -363,7 +359,7 @@ export class SlangCompiler {
 			// extend binding with resourceInfo
 			Object.assign(binding, resourceInfo);
 
-			resourceDescriptors.set(name, binding);
+			resourceDescriptors[name] = binding;
 		}
 
 		return resourceDescriptors;
@@ -440,7 +436,7 @@ export class SlangCompiler {
 			let reflectionJson: ReflectionJSON = linkedProgram.getLayout(0)?.toJsonObject();
 			let hashedStrings: HashedStringData = reflectionJson.hashedStrings ? Object.fromEntries(Object.entries(reflectionJson.hashedStrings).map(entry => entry.reverse())) : {};
 
-			let bindings: Bindings = noWebGPU ? new Map() : this.getResourceBindings(reflectionJson);
+			let bindings: Bindings = noWebGPU ? {} : this.getResourceBindings(reflectionJson);
 
 			// remove incorrect uniform bindings
 			let has_uniform_been_binded = false;
@@ -448,15 +444,15 @@ export class SlangCompiler {
 				if (parameterReflection.binding.kind != "uniform") continue;
 
 				has_uniform_been_binded = true;
-				bindings.delete(parameterReflection.name);
+				delete bindings[parameterReflection.name];
 			}
 
 			if (has_uniform_been_binded) {
-				bindings.set("uniformInput", {
+				bindings["uniformInput"] = {
 					binding: 0,
 					visibility: GPUShaderStage.COMPUTE,
 					buffer: { type: "uniform" }
-				});
+				};
 			}
 
 			// Also read the shader work-group sizes.

@@ -1,4 +1,8 @@
-import type { HashedStringData, ScalarType, ReflectionJSON, SlangFormat, ReflectionType } from '../../shared/playgroundInterface.js'
+import type { HashedStringData, ScalarType, ReflectionJSON, SlangFormat, ReflectionType } from './playgroundInterface.js'
+
+export const RUNNABLE_ENTRY_POINT_NAMES = ['imageMain', 'printMain'] as const;
+export type RunnableShaderType = typeof RUNNABLE_ENTRY_POINT_NAMES[number];
+export type ShaderType = RunnableShaderType | null;
 
 export class NotReadyError extends Error {
     constructor(message: string) {
@@ -231,6 +235,9 @@ export type ParsedCommand = {
     "type": "TIME",
     "offset": number,
 } | {
+    "type": "FRAME_ID",
+    "offset": number,
+} | {
     "type": "MOUSE_POSITION",
     "offset": number,
 } | {
@@ -426,6 +433,8 @@ export type UniformController = { buffer_offset: number } & ({
     value: [number, number, number],
 } | {
     type: "TIME",
+} | {
+    type: "FRAME_ID",
 } | {
     type: "MOUSE_POSITION",
 } | {
@@ -824,4 +833,16 @@ export async function fetchWithProgress(url: string, onProgress: { (loaded: numb
     }
 
     return buffer;
+}
+
+export function checkShaderType(userSource: string) {
+    // we did a pre-filter on the user input source code.
+    let shaderTypes = RUNNABLE_ENTRY_POINT_NAMES.filter((entryPoint) => userSource.includes(entryPoint));
+
+    // Only one of the main function should be defined.
+    // In this case, we will know that the shader is not runnable, so we can only compile it.
+    if (shaderTypes.length !== 1)
+        return null;
+
+    return shaderTypes[0];
 }

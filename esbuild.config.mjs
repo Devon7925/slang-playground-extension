@@ -1,6 +1,7 @@
 // esbuild.config.mjs
 // Basic config for building both client and server
 import esbuild from 'esbuild';
+import vuePlugin from 'esbuild-plugin-vue3';
 
 async function buildAll() {
 	try {
@@ -33,6 +34,21 @@ async function buildAll() {
 			loader: {
 				'.slang': 'text',
 			},
+		});
+
+		// Build webview bundle
+		await esbuild.build({
+			entryPoints: ['webview/src/app.ts'],
+			bundle: true,
+			outfile: 'client/dist/webviewBundle.js',
+			platform: 'browser',
+			sourcemap: true,
+			target: ['es2022'],
+			format: 'esm',
+			tsconfig: 'webview/tsconfig.json',
+			define: { 'process.env.NODE_ENV': '"production"' },
+			plugins: [vuePlugin()],
+			external: [],
 		});
 	} catch (err) {
 		// Use globalThis.console for ESM compatibility

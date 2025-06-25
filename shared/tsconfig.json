@@ -4,21 +4,21 @@
 		"target": "es2020",
 		"lib": [
 			"es2020",
-			"WebWorker"
+			"WebWorker",
+			"DOM"
 		],
-		"rootDir": "src",
+		"rootDir": ".",
 		"sourceMap": true,
 		"types": [
 			"@webgpu/types",
-		]
+		],
+		"composite": true
 	},
 	"include": [
-		"src",
-		"../shared/util.ts"
+		"."
 	],
 	"exclude": [
 		"node_modules",
 		".vscode-test-web"
-	],
-  	"references": [{ "path": "../shared/tsconfig.json" }]
+	]
 }

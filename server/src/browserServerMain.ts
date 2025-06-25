@@ -310,7 +310,7 @@ connection.onDidChangeTextDocument(async (params) => {
 });
 
 connection.onRequest('slang/compile', async (params: CompileRequest): Promise<CompilationResult> => {
-	return compiler.compile(params.sourceCode, "", params.target, true)
+	return compiler.compile(params.sourceCode, "", params.target, params.noWebGPU)
 });
 
 // Listen on the connection
