@@ -29,7 +29,8 @@ export async function activate(context: ExtensionContext) {
 				'Slang Playground',
 				vscode.ViewColumn.Beside,
 				{
-					enableScripts: true
+					enableScripts: true,
+					retainContextWhenHidden: true,
 				}
 			);
 			panel.webview.html = getPlaygroundWebviewContent(context);

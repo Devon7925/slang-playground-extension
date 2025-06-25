@@ -96,6 +96,16 @@ function toggleFullscreen() {
     }
 }
 
+let queuedPlaygroundRunData: PlaygroundRun | undefined = undefined;
+
+window.addEventListener('message', event => {
+    const playgroundRunData: PlaygroundRun = event.data;
+    if(device != undefined)
+        tryRun(playgroundRunData)
+    else
+        queuedPlaygroundRunData = playgroundRunData
+});
+
 onMounted(async () => {
     device = await tryGetDevice();
     if (canvas.value == null) {
@@ -116,6 +126,10 @@ onMounted(async () => {
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    if(queuedPlaygroundRunData != undefined) {
+        tryRun(queuedPlaygroundRunData)
+        queuedPlaygroundRunData = undefined;
+    }
 })
 
 /**
@@ -972,11 +986,6 @@ async function tryRun(playgroundRun: PlaygroundRun) {
         uniformComponents,
     });
 }
-
-window.addEventListener('message', event => {
-    const message: PlaygroundRun = event.data;
-    tryRun(message)
-});
 </script>
 
 <template>
