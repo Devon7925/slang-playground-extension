@@ -2,7 +2,7 @@
     "name": "devon-slang-playground-extension",
     "displayName": "Slang Playground",
     "description": "Playground Extension for the Slang Shading Language",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "publisher": "Devon7925",
     "repository": {
         "type": "git",
