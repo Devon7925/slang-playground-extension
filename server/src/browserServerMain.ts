@@ -27,7 +27,9 @@ function removePrefix(data: string, prefix: string): string {
 function getEmscriptenURI(uri: string): string {
 	uri = removePrefix(uri, "vscode-test-web://");
 	uri = removePrefix(uri, "file:///");
-	uri = removePrefix(uri, initializationOptions.workspaceUri.replaceAll('\\', '/').replaceAll(':', '%3A'));
+	for (const workspaceUri in initializationOptions.workspaceUris) {
+		uri = removePrefix(uri, workspaceUri.replaceAll('\\', '/').replaceAll(':', '%3A'));
+	}
 	return uri;
 }
 

@@ -7,7 +7,7 @@ export type CompileRequest = {
 
 export type ServerInitializationOptions = {
 	extensionUri: string,
-	workspaceUri: string,
+	workspaceUris: string[],
 	files: { uri: string, content: string }[],
 }
 

@@ -93,7 +93,7 @@ export async function activate(context: ExtensionContext) {
 
 	const initializationOptions: ServerInitializationOptions = {
 		extensionUri: context.extensionUri.toString(true),
-		workspaceUri: vscode.workspace.workspaceFolders[0].uri.fsPath,
+		workspaceUris: vscode.workspace.workspaceFolders.map(folder => folder.uri.fsPath),
 		files: await getSlangFilesWithContents(),
 	}
 
