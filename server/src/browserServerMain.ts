@@ -89,6 +89,49 @@ function loadFileIntoEmscriptenFS(uri: string, content: string) {
 	slangWasmModule.FS.writeFile(uri, content);
 }
 
+function applyIncrementalChange(
+    text: string,
+    change: TextDocumentContentChangeEvent
+): string {
+	if (!TextDocumentContentChangeEvent.isIncremental(change)) {
+		return change.text;
+	}
+    const lines = text.split('\n');
+
+    const startLine = change.range.start.line;
+    const startChar = change.range.start.character;
+    const endLine = change.range.end.line;
+    const endChar = change.range.end.character;
+
+    const before = lines.slice(0, startLine);
+    const after = lines.slice(endLine + 1);
+
+    const startLineText = lines[startLine] ?? '';
+    const endLineText = lines[endLine] ?? '';
+
+    const prefix = startLineText.substring(0, startChar);
+    const suffix = endLineText.substring(endChar);
+
+    const newLines = (change.text || '').split('\n');
+    const middle = [...newLines];
+    if (middle.length > 0) {
+        middle[0] = prefix + middle[0];
+        middle[middle.length - 1] = middle[middle.length - 1] + suffix;
+    }
+
+    return [...before, ...middle, ...after].join('\n');
+}
+
+function modifyEmscriptenFile(uri: string, changes: TextDocumentContentChangeEvent[]) {
+	// Ensure directory exists
+	
+	let content = slangWasmModule.FS.readFile(uri).toString();
+	for(const change of changes) {
+		content = applyIncrementalChange(content, change)
+	}
+	slangWasmModule.FS.writeFile(uri, content);
+}
+
 async function ensureSlangModuleLoaded() {
 	if (moduleReady) return moduleReady;
 	moduleReady = (async () => {
@@ -116,6 +159,11 @@ connection.onInitialize(async (_params: InitializeParams): Promise<InitializeRes
 	} catch (err) {
 		console.error('Failed to load slang-wasm:', err);
 	}
+
+	for(const file of initializationOptions.files) {
+		loadFileIntoEmscriptenFS(file.uri, file.content);
+	}
+
 	return {
 		capabilities: {
 			textDocumentSync: TextDocumentSyncKind.Incremental,
@@ -249,6 +297,8 @@ connection.onDidOpenTextDocument(async (params) => {
 connection.onDidChangeTextDocument(async (params) => {
 	const uri = params.textDocument.uri;
 	const wasmURI = getSlangdURI(uri)
+	const emscriptenURI = getEmscriptenURI(uri);
+	modifyEmscriptenFile(emscriptenURI, params.contentChanges);
 	// Try to call didChangeTextDocument with just the text (if supported)
 	try {
 		// Try to construct a TextEditList as in MonacoEditor.vue

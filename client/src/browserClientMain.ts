@@ -19,6 +19,24 @@ const compileOptionMap: { [k in (typeof compileOptions)[number]]: string } = {
 	WGSL: 'wgsl'
 }
 
+async function getSlangFilesWithContents(): Promise<{ uri: string, content: string }[]> {
+    const pattern = '**/*.slang';
+    const files = await vscode.workspace.findFiles(pattern);
+    
+    const results: { uri: string, content: string }[] = [];
+
+    for (const uri of files) {
+        try {
+            const document = await vscode.workspace.openTextDocument(uri);
+            results.push({ uri: uri.toString(true), content: document.getText() });
+        } catch (err) {
+            console.error(`Failed to read ${uri.fsPath}:`, err);
+        }
+    }
+
+    return results;
+}
+
 // this method is called when vs code is activated
 export async function activate(context: ExtensionContext) {
 	// Register Playground Run command to open a webview
@@ -74,9 +92,10 @@ export async function activate(context: ExtensionContext) {
 	const documentSelector = [{ language: 'slang' }];
 
 	const initializationOptions: ServerInitializationOptions = {
-			extensionUri: context.extensionUri.toString(true),
-			workspaceUri: vscode.workspace.workspaceFolders[0].uri.fsPath
-		}
+		extensionUri: context.extensionUri.toString(true),
+		workspaceUri: vscode.workspace.workspaceFolders[0].uri.fsPath,
+		files: await getSlangFilesWithContents(),
+	}
 
 	// Options to control the language client
 	const clientOptions: LanguageClientOptions = {

@@ -8,6 +8,7 @@ export type CompileRequest = {
 export type ServerInitializationOptions = {
 	extensionUri: string,
 	workspaceUri: string,
+	files: { uri: string, content: string }[],
 }
 
 export type ScalarType = `${"uint" | "int"}${8 | 16 | 32 | 64}` | `${"float"}${16 | 32 | 64}`;
