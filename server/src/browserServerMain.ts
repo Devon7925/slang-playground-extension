@@ -80,7 +80,7 @@ function loadFileIntoEmscriptenFS(uri: string) {
 	const dir = splitPath.join("/");
 	let pathData = slangWasmModule.FS.analyzePath(uri, false);
 	if (!pathData.parentExists) {
-		slangWasmModule.FS.mkdir(dir);
+		slangWasmModule.FS.createPath('/', dir, true, true);
 	}
 
 
