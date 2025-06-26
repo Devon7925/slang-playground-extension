@@ -1,14 +1,7 @@
 {
-	"name": "lsp-web-extension-sample-client",
-	"description": "VSCode part of a language server in a web extension",
-	"author": "Microsoft Corporation",
-	"license": "MIT",
+    "name": "devon-slang-playground-extension",
+    "description": "Extension for the Slang Shading Language",
 	"version": "0.0.1",
-	"publisher": "vscode",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/Microsoft/vscode-extension-samples"
-	},
 	"engines": {
 		"vscode": "^1.85.0"
 	},

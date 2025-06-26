@@ -1,5 +1,5 @@
 {
-	"name": "lsp-web-extension-sample-client",
+    "name": "devon-slang-playground-extension",
 	"description": "VSCode part of a language server in a web extension",
 	"author": "Microsoft Corporation",
 	"license": "MIT",
