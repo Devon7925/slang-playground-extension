@@ -71,25 +71,22 @@ const connection = createConnection(messageReader, messageWriter);
 let moduleReady: Promise<void> | null = null;
 let initializationOptions: ServerInitializationOptions;
 
-function loadFileIntoEmscriptenFS(uri: string) {
-	// Get relative path within the workspace
+function loadFileIntoEmscriptenFS(uri: string, content: string) {
+	// Ensure directory exists
 	const splitPath = uri.split("/")
-
-	// Ensure directory structure in MEMFS
-	const name = splitPath.pop()
+	splitPath.pop()
 	const dir = splitPath.join("/");
 	let pathData = slangWasmModule.FS.analyzePath(uri, false);
 	if (!pathData.parentExists) {
 		slangWasmModule.FS.createPath('/', dir, true, true);
 	}
 
-
 	// Write the actual file
 	if (pathData.exists) {
 		console.log("file already exists " + uri)
 		return
 	}
-	slangWasmModule.FS.createDataFile(dir, name, new DataView(new ArrayBuffer(0)), true, true, false);
+	slangWasmModule.FS.writeFile(uri, content);
 }
 
 async function ensureSlangModuleLoaded() {
@@ -245,7 +242,7 @@ connection.onDidOpenTextDocument(async (params) => {
 	const uri = params.textDocument.uri;
 	const wasmURI = getSlangdURI(uri);
 	const emscriptenURI = getEmscriptenURI(uri);
-	loadFileIntoEmscriptenFS(emscriptenURI);
+	loadFileIntoEmscriptenFS(emscriptenURI, params.textDocument.text);
 	slangd.didOpenTextDocument(wasmURI, params.textDocument.text);
 });
 // Diagnostics (textDocument/didChange, didOpen, didClose handled by TextDocuments)
@@ -290,7 +287,9 @@ connection.onDidChangeTextDocument(async (params) => {
 });
 
 connection.onRequest('slang/compile', async (params: CompileRequest): Promise<CompilationResult> => {
-	return compiler.compile(params.sourceCode, "", params.target, params.noWebGPU)
+	let path = getEmscriptenURI(params.shaderPath);
+	console.log("Compile path: "+path)
+	return compiler.compile(params.sourceCode, path, "", params.target, params.noWebGPU)
 });
 
 // Listen on the connection

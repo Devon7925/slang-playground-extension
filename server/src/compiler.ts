@@ -1,8 +1,8 @@
-import type { ComponentType, EmbindString, GlobalSession, MainModule, Module, ProgramLayout, Session, ThreadGroupSize, VariableLayoutReflection } from '../../media/slang-wasm.js';
+import type { ComponentType, EmbindString, GlobalSession, MainModule, Module, Session } from '../../media/slang-wasm.js';
 import playgroundSource from "./slang/playground.slang";
 import imageMainSource from "./slang/imageMain.slang";
 import printMainSource from "./slang/printMain.slang";
-import { ACCESS_MAP, getTextureFormat, sizeFromFormat, webgpuFormatfromSlangFormat, type RunnableShaderType, type ShaderType, RUNNABLE_ENTRY_POINT_NAMES } from "../../shared/util.js";
+import { ACCESS_MAP, getTextureFormat, webgpuFormatfromSlangFormat, type RunnableShaderType, type ShaderType, RUNNABLE_ENTRY_POINT_NAMES } from "../../shared/util.js";
 import type { HashedStringData, ScalarType, ReflectionParameter, ReflectionJSON, CompilationResult, Bindings } from '../../shared/playgroundInterface.js'
 
 export function isWholeProgramTarget(compileTarget: string) {
@@ -39,9 +39,6 @@ export class SlangCompiler {
 		for (let runnableEntryPoint of RUNNABLE_ENTRY_POINT_NAMES) {
 			this.mainModules.set(runnableEntryPoint, { source: RUNNABLE_ENTRY_POINT_SOURCE_MAP[runnableEntryPoint] });
 		}
-
-		module.FS.createDataFile("/", "user.slang", new DataView(new ArrayBuffer(0)), true, true, false);
-		module.FS.createDataFile("/", "playground.slang", new DataView(new ArrayBuffer(0)), true, true, false);
 	}
 
 	init() {
@@ -136,9 +133,13 @@ export class SlangCompiler {
 	// already defined in our pre-built module. So we will add those one of those entry points to the
 	// dropdown list. Then, we will find whether user code also defines other entry points, if it has
 	// we will also add them to the dropdown list.
-	findDefinedEntryPoints(shaderSource: string): string[] {
+	findDefinedEntryPoints(shaderSource: string, shaderPath: string): string[] {
 		let result: string[] = [];
 		let runnable: string[] = [];
+
+		const split_dir = shaderPath.split('/');
+		split_dir.pop();
+		const dir = split_dir.join('/')
 		for (let entryPointName of RUNNABLE_ENTRY_POINT_NAMES) {
 			if (shaderSource.match(entryPointName)) {
 				runnable.push(entryPointName);
@@ -153,9 +154,9 @@ export class SlangCompiler {
 			}
 			let module: Module | null = null;
 			if (runnable.length > 0) {
-				slangSession.loadModuleFromSource(playgroundSource, "playground", "/playground.slang");
+				slangSession.loadModuleFromSource(playgroundSource, "playground", dir+"/playground.slang");
 			}
-			module = slangSession.loadModuleFromSource(shaderSource, "user", "/user.slang");
+			module = slangSession.loadModuleFromSource(shaderSource, "user", dir+"/user.slang");
 			if (!module) {
 				const error = this.slangWasmModule.getLastError();
 				console.error(error.type + " error: " + error.message);
@@ -188,12 +189,16 @@ export class SlangCompiler {
 	// Since we will not let user to change the entry point code, we can precompile the entry point module
 	// and reuse it for every compilation.
 
-	compileEntryPointModule(slangSession: Session, moduleName: string) {
+	compileEntryPointModule(slangSession: Session, moduleName: string, shaderPath: string) {
+		const split_dir = shaderPath.split('/');
+		split_dir.pop();
+		const dir = split_dir.join('/')
+
 		let source = this.mainModules.get(moduleName)?.source;
 		if (source == undefined) {
 			throw new Error(`Could not get module ${moduleName}`);
 		}
-		let module: Module | null = slangSession.loadModuleFromSource(source, moduleName, '/' + moduleName + '.slang');
+		let module: Module | null = slangSession.loadModuleFromSource(source, moduleName, dir+'/' + moduleName + '.slang');
 
 		if (!module) {
 			const error = this.slangWasmModule.getLastError();
@@ -211,17 +216,17 @@ export class SlangCompiler {
 
 	}
 
-	getPrecompiledProgram(slangSession: Session, moduleName: string) {
+	getPrecompiledProgram(slangSession: Session, moduleName: string, shaderPath: string) {
 		if (!this.isRunnableEntryPoint(moduleName))
 			return null;
 
-		let mainModule = this.compileEntryPointModule(slangSession, moduleName);
+		let mainModule = this.compileEntryPointModule(slangSession, moduleName, shaderPath);
 
 		this.shaderType = moduleName;
 		return mainModule;
 	}
 
-	addActiveEntryPoints(slangSession: Session, shaderSource: string, entryPointName: string, isWholeProgram: boolean, userModule: Module, componentList: Module[]) {
+	addActiveEntryPoints(slangSession: Session, shaderSource: string, shaderPath: string, entryPointName: string, isWholeProgram: boolean, userModule: Module, componentList: Module[]) {
 		if (entryPointName == "" && !isWholeProgram) {
 			this.diagnosticsMsg += ("error: No entry point specified");
 			return false;
@@ -242,7 +247,7 @@ export class SlangCompiler {
 		if (entryPointName != "" && !isWholeProgram) {
 			if (this.isRunnableEntryPoint(entryPointName)) {
 				// we use the same entry point name as module name
-				const mainProgram = this.getPrecompiledProgram(slangSession, entryPointName);
+				const mainProgram = this.getPrecompiledProgram(slangSession, entryPointName, shaderPath);
 				if (!mainProgram)
 					return false;
 
@@ -263,10 +268,10 @@ export class SlangCompiler {
 		// otherwise, it's a whole program compilation, we will find all active entry points in the user code
 		// and pre-built modules.
 		else {
-			const results = this.findDefinedEntryPoints(shaderSource);
+			const results = this.findDefinedEntryPoints(shaderSource, shaderPath);
 			for (let i = 0; i < results.length; i++) {
 				if (this.isRunnableEntryPoint(results[i])) {
-					const mainProgram = this.getPrecompiledProgram(slangSession, results[i]);
+					const mainProgram = this.getPrecompiledProgram(slangSession, results[i], shaderPath);
 					if (!mainProgram)
 						return false;
 					componentList.push(mainProgram.module);
@@ -365,8 +370,8 @@ export class SlangCompiler {
 		return resourceDescriptors;
 	}
 
-	loadModule(slangSession: Session, moduleName: string, source: string, componentTypeList: Module[]) {
-		let module: Module | null = slangSession.loadModuleFromSource(source, moduleName, "/" + moduleName + ".slang");
+	loadModule(slangSession: Session, moduleName: string, modulePath: string, source: string, componentTypeList: Module[]) {
+		let module: Module | null = slangSession.loadModuleFromSource(source, moduleName, modulePath);
 		if (!module) {
 			const error = this.slangWasmModule.getLastError();
 			console.error(error.type + " error: " + error.message);
@@ -377,7 +382,7 @@ export class SlangCompiler {
 		return true;
 	}
 
-	compile(shaderSource: string, entryPointName: string, compileTargetStr: string, noWebGPU: boolean): CompilationResult {
+	compile(shaderSource: string, shaderPath: string, entryPointName: string, compileTargetStr: string, noWebGPU: boolean): CompilationResult {
 		this.diagnosticsMsg = "";
 
 		let shouldLinkPlaygroundModule = RUNNABLE_ENTRY_POINT_NAMES.some((entry_point) => shaderSource.match(entry_point) != null);
@@ -389,6 +394,10 @@ export class SlangCompiler {
 			this.diagnosticsMsg = "unknown compile target: " + compileTargetStr;
 			return null;
 		}
+
+		const split_dir = shaderPath.split('/');
+		split_dir.pop();
+		const dir = split_dir.join('/')
 
 		try {
 			if (this.globalSlangSession == null) {
@@ -406,13 +415,13 @@ export class SlangCompiler {
 
 			let userModuleIndex = 0;
 			if (shouldLinkPlaygroundModule) {
-				if (!this.loadModule(slangSession, "playground", playgroundSource, components))
+				if (!this.loadModule(slangSession, "playground", dir + "/playground.slang", playgroundSource, components))
 					return null;
 				userModuleIndex++;
 			}
-			if (!this.loadModule(slangSession, "user", shaderSource, components))
+			if (!this.loadModule(slangSession, "user", dir + '/user.slang', shaderSource, components))
 				return null;
-			if (this.addActiveEntryPoints(slangSession, shaderSource, entryPointName, isWholeProgram, components[userModuleIndex], components) == false)
+			if (this.addActiveEntryPoints(slangSession, shaderSource, shaderPath, entryPointName, isWholeProgram, components[userModuleIndex], components) == false)
 				return null;
 			let program: ComponentType = slangSession.createCompositeComponentType(components);
 			let linkedProgram: ComponentType = program.link();

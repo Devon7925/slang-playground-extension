@@ -101,6 +101,7 @@ export async function activate(context: ExtensionContext) {
 		const parameter: CompileRequest = {
 			target: targetSelection,
 			sourceCode: window.activeTextEditor.document.getText() ?? '',
+			shaderPath: window.activeTextEditor.document.uri.toString(true),
 			noWebGPU: true,
 		}
 		let result: CompilationResult = await client.sendRequest('slang/compile', parameter);
@@ -167,6 +168,7 @@ async function compileShader(userSource: string, entryPoint: string, compileTarg
 	const parameter: CompileRequest = {
 		target: compileTarget,
 		sourceCode: window.activeTextEditor.document.getText() ?? '',
+		shaderPath: window.activeTextEditor.document.uri.toString(true),
 		noWebGPU: false,
 	}
 	let compiledResult: CompilationResult = await client.sendRequest('slang/compile', parameter);

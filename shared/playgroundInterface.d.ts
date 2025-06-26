@@ -1,6 +1,7 @@
 export type CompileRequest = {
 	target: 'SPIRV' | 'METAL' | 'WGSL',
 	sourceCode: string,
+	shaderPath: string,
 	noWebGPU: boolean,
 }
 
