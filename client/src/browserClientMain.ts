@@ -8,8 +8,8 @@ import * as vscode from 'vscode';
 import { LanguageClientOptions } from 'vscode-languageclient';
 
 import { LanguageClient } from 'vscode-languageclient/browser';
-import type { Bindings, CompilationResult, CompileRequest, HashedStringData, MaybeShader, PlaygroundRun, ReflectionJSON } from '../../shared/playgroundInterface';
-import { CallCommand, checkShaderType, getResourceCommandsFromAttributes, getUniformControllers, getUniformSize, parseCallCommands, RUNNABLE_ENTRY_POINT_NAMES } from "../../shared/util.js";
+import type { CompilationResult, CompileRequest, MaybeShader, PlaygroundRun, ServerInitializationOptions } from '../../shared/playgroundInterface';
+import { checkShaderType } from "../../shared/util.js";
 
 let client: LanguageClient;
 const compileOptions = ['SPIRV', 'METAL', 'WGSL'] as const;
@@ -33,7 +33,7 @@ export async function activate(context: ExtensionContext) {
 					retainContextWhenHidden: true,
 				}
 			);
-			panel.webview.html = getPlaygroundWebviewContent(context);
+			panel.webview.html = getPlaygroundWebviewContent(context, panel);
 
 			const userSource = window.activeTextEditor.document.getText();
 			const shaderType = checkShaderType(userSource);
@@ -73,13 +73,16 @@ export async function activate(context: ExtensionContext) {
 	 */
 	const documentSelector = [{ language: 'slang' }];
 
+	const initializationOptions: ServerInitializationOptions = {
+			extensionUri: context.extensionUri.toString(true),
+			workspaceUri: vscode.workspace.workspaceFolders[0].uri.fsPath
+		}
+
 	// Options to control the language client
 	const clientOptions: LanguageClientOptions = {
 		documentSelector,
 		synchronize: {},
-		initializationOptions: {
-			extensionUri: context.extensionUri.toString(true)
-		}
+		initializationOptions,
 	};
 
 	client = createWorkerLanguageClient(context, clientOptions);
@@ -127,10 +130,10 @@ function createWorkerLanguageClient(context: ExtensionContext, clientOptions: La
 	return new LanguageClient('lsp-web-extension-sample', 'LSP Web Extension Sample', clientOptions, worker);
 }
 
-export function getPlaygroundWebviewContent(context: ExtensionContext): string {
+export function getPlaygroundWebviewContent(context: ExtensionContext, panel: vscode.WebviewPanel): string {
 	// Webview HTML with script tag for the esbuild webview bundle
-	const webviewMain = Uri.joinPath(context.extensionUri, 'client/dist/webviewBundle.js');
-	const webviewStyle = Uri.joinPath(context.extensionUri, 'client/dist/webviewBundle.css');
+	const webviewMain = panel.webview.asWebviewUri(Uri.joinPath(context.extensionUri, 'client/dist/webviewBundle.js'));
+	const webviewStyle = panel.webview.asWebviewUri(Uri.joinPath(context.extensionUri, 'client/dist/webviewBundle.css'));
 	return `
 	<!DOCTYPE html>
 	<html lang="en">

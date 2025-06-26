@@ -7,8 +7,9 @@ import { createConnection, BrowserMessageReader, BrowserMessageWriter } from 'vs
 import { InitializeParams, InitializeResult, TextDocuments, TextDocumentSyncKind, MarkupKind, DocumentSymbol, Location, SignatureHelp, CompletionItemKind, CompletionItem, SignatureInformation, ParameterInformation, TextDocumentContentChangeEvent } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
+import createModule from '../../media/slang-wasm.js';
 import type { LanguageServer, MainModule, CompletionContext } from '../../media/slang-wasm';
-import type { CompilationResult, CompileRequest } from '../../shared/playgroundInterface';
+import type { CompilationResult, CompileRequest, ServerInitializationOptions } from '../../shared/playgroundInterface';
 
 // We'll set these after dynamic import
 let slangd: LanguageServer;
@@ -17,15 +18,16 @@ let slangWasmModule: MainModule;
 
 
 // Helper to resolve the correct URL for the WASM and JS files
-function getPublicUrl(filename: string): string {
-	// This will be replaced at runtime if extensionUri is provided
-	return '/media/' + filename;
+function removePrefix(data: string, prefix: string): string {
+	if (data.startsWith(prefix))
+		data = data.slice(prefix.length)
+	return data;
 }
 
 function getEmscriptenURI(uri: string): string {
-	const prefix = "vscode-test-web://";
-	if (uri.startsWith(prefix))
-		uri = uri.slice(prefix.length)
+	uri = removePrefix(uri, "vscode-test-web://");
+	uri = removePrefix(uri, "file:///");
+	uri = removePrefix(uri, initializationOptions.workspaceUri.replaceAll('\\', '/').replaceAll(':', '%3A'));
 	return uri;
 }
 
@@ -34,11 +36,8 @@ function getSlangdURI(uri: string): string {
 }
 
 function vscodeURIFromSlangdURI(uri: string): string {
-	const prefix = "file:///";
-	if (uri.startsWith(prefix))
-		uri = uri.slice(prefix.length)
+	uri = removePrefix(uri, "file:///");
 	return `vscode-test-web://${uri}`;
-
 }
 
 function convertDocumentSymbol(sym: any): DocumentSymbol {
@@ -70,14 +69,7 @@ const connection = createConnection(messageReader, messageWriter);
 
 // // Dynamically import the WASM module and set up the language server
 let moduleReady: Promise<void> | null = null;
-let extensionUri: string | undefined;
-function getResourceUrl(filename: string): string {
-	if (extensionUri) {
-		// VS Code web extension: extensionUri points to the root, so join with /media/...
-		return extensionUri.replace(/\/$/, '') + '/media/' + filename;
-	}
-	return getPublicUrl(filename);
-}
+let initializationOptions: ServerInitializationOptions;
 
 function loadFileIntoEmscriptenFS(uri: string) {
 	// Get relative path within the workspace
@@ -103,20 +95,8 @@ function loadFileIntoEmscriptenFS(uri: string) {
 async function ensureSlangModuleLoaded() {
 	if (moduleReady) return moduleReady;
 	moduleReady = (async () => {
-		// Dynamically import the JS glue code using extensionUri if available
-		const slangWasmUrl = getResourceUrl('slang-wasm.js');
-		const createModule = await import(/* @vite-ignore */ slangWasmUrl);
-		// Patch the module config to use the correct WASM binary URL
-		const moduleConfig = {
-			locateFile(path: string) {
-				if (path.endsWith('.wasm')) {
-					return getResourceUrl('slang-wasm.wasm');
-				}
-				return path;
-			}
-		};
-		// Actually instantiate the WASM module and create the language server
-		slangWasmModule = await createModule.default(moduleConfig);
+		// Instantiate the WASM module and create the language server
+		slangWasmModule = await createModule();
         compiler = new SlangCompiler(slangWasmModule);
         let result = compiler.init();
 		if(!result.ret) {
@@ -131,8 +111,8 @@ async function ensureSlangModuleLoaded() {
 
 connection.onInitialize(async (_params: InitializeParams): Promise<InitializeResult> => {
 	// Accept extensionUri from initializationOptions
-	if (_params.initializationOptions && _params.initializationOptions.extensionUri) {
-		extensionUri = _params.initializationOptions.extensionUri;
+	if (_params.initializationOptions) {
+		initializationOptions = _params.initializationOptions;
 	}
 	try {
 		await ensureSlangModuleLoaded();
