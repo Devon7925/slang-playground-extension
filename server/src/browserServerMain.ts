@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 import { createConnection, BrowserMessageReader, BrowserMessageWriter } from 'vscode-languageserver/browser';
 
-import { InitializeParams, InitializeResult, TextDocuments, TextDocumentSyncKind, MarkupKind, DocumentSymbol, Location, SignatureHelp, CompletionItemKind, CompletionItem, SignatureInformation, ParameterInformation, TextDocumentContentChangeEvent } from 'vscode-languageserver';
+import { InitializeParams, InitializeResult, TextDocuments, TextDocumentSyncKind, MarkupKind, DocumentSymbol, Location, SignatureHelp, CompletionItemKind, CompletionItem, SignatureInformation, ParameterInformation, TextDocumentContentChangeEvent, Diagnostic } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import createModule from '../../media/slang-wasm.js';
@@ -161,7 +161,8 @@ connection.onInitialize(async (_params: InitializeParams): Promise<InitializeRes
 	}
 
 	for(const file of initializationOptions.files) {
-		loadFileIntoEmscriptenFS(file.uri, file.content);
+		const emscriptenURI = getEmscriptenURI(file.uri);
+		loadFileIntoEmscriptenFS(emscriptenURI, file.content);
 	}
 
 	return {
@@ -186,11 +187,12 @@ documents.listen(connection);
 import { DiagnosticSeverity } from 'vscode-languageserver';
 import { SlangCompiler } from './compiler';
 connection.onCompletion(async (params, _token, _progress): Promise<CompletionItem[]> => {
+	const wasmURI = getSlangdURI(params.textDocument.uri);
 	let lspContext: CompletionContext = {
 		triggerKind: params.context!.triggerKind,
 		triggerCharacter: params.context?.hasOwnProperty("triggerCharacter") ? (params.context?.triggerCharacter || "") : ""
 	};
-	const result = slangd.completion(params.textDocument.uri, params.position, lspContext);
+	const result = slangd.completion(wasmURI, params.position, lspContext);
 	if (result == undefined) {
 		return [];
 	}
@@ -213,7 +215,8 @@ connection.onCompletion(async (params, _token, _progress): Promise<CompletionIte
 
 // Hover
 connection.onHover(async (params, _token) => {
-	const result = slangd.hover(params.textDocument.uri, params.position);
+	const wasmURI = getSlangdURI(params.textDocument.uri);
+	const result = slangd.hover(wasmURI, params.position);
 	if (!result) return null;
 	return {
 		contents: {
@@ -226,7 +229,8 @@ connection.onHover(async (params, _token) => {
 
 // Definition
 connection.onDefinition(async (params, _token) => {
-	const result = slangd.gotoDefinition(params.textDocument.uri, params.position);
+	const wasmURI = getSlangdURI(params.textDocument.uri);
+	const result = slangd.gotoDefinition(wasmURI, params.position);
 	if (!result) return null;
 
 	const arr: Location[] = [];
@@ -243,7 +247,8 @@ connection.onDefinition(async (params, _token) => {
 
 // Signature Help
 connection.onSignatureHelp(async (params, _token): Promise<SignatureHelp | null> => {
-	const result = slangd.signatureHelp(params.textDocument.uri, params.position);
+	const wasmURI = getSlangdURI(params.textDocument.uri);
+	const result = slangd.signatureHelp(wasmURI, params.position);
 	if (!result) return null;
 
 	const sigs: SignatureInformation[] = [];
@@ -275,7 +280,8 @@ connection.onSignatureHelp(async (params, _token): Promise<SignatureHelp | null>
 
 // Document Symbols
 connection.onDocumentSymbol(async (params, _token) => {
-	const result = slangd.documentSymbol(params.textDocument.uri);
+	const wasmURI = getSlangdURI(params.textDocument.uri);
+	const result = slangd.documentSymbol(wasmURI);
 	if (!result || typeof result.size !== 'function' || typeof result.get !== 'function') return [];
 	const symbols = [];
 	for (let i = 0; i < result.size(); i++) {
@@ -317,7 +323,7 @@ connection.onDidChangeTextDocument(async (params) => {
 			connection.sendDiagnostics({ uri, diagnostics: [] });
 			return;
 		}
-		const lspDiagnostics = [];
+		const lspDiagnostics: Diagnostic[] = [];
 		for (let i = 0; i < diagnostics.size(); i++) {
 			const d = diagnostics.get(i);
 			if (!d) continue;
