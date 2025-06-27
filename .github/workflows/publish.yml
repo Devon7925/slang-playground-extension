@@ -26,7 +26,11 @@ jobs:
           npm run compile
           npm install -g @vscode/vsce
           vsce package
-          vsce publish -p "$VSCE_TOKEN"
+          for file in ./*.vsix
+          do
+            vsce publish -p "$VSCE_TOKEN" --packagePath "$file"
+            echo "Published VSIX: $file"
+          done
           mv ./*.vsix dist/
 
       - name: Upload export artifact
