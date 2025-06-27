@@ -1,4 +1,4 @@
-name: Continuous Integration for PR
+name: Publish VSIX - GitHub
 
 on:
   push:
@@ -31,6 +31,7 @@ jobs:
             vsce publish -p "$VSCE_TOKEN" --packagePath "$file"
             echo "Published VSIX: $file"
           done
+          mkdir dist
           mv ./*.vsix dist/
 
       - name: Upload export artifact
