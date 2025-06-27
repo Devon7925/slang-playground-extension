@@ -8,33 +8,54 @@ import * as vscode from 'vscode';
 import { LanguageClientOptions } from 'vscode-languageclient';
 
 import { LanguageClient } from 'vscode-languageclient/browser';
-import type { CompilationResult, CompileRequest, MaybeShader, PlaygroundRun, ServerInitializationOptions } from '../../shared/playgroundInterface';
+import type { CompilationResult, CompileRequest, EntrypointsRequest, EntrypointsResult, MaybeShader, PlaygroundRun, ServerInitializationOptions } from '../../shared/playgroundInterface';
 import { checkShaderType } from "../../shared/util.js";
 
 let client: LanguageClient;
-const compileOptions = ['SPIRV', 'METAL', 'WGSL'] as const;
-const compileOptionMap: { [k in (typeof compileOptions)[number]]: string } = {
-	SPIRV: 'spirv',
-	METAL: 'metal',
-	WGSL: 'wgsl'
+const compileOptions = ['HLSL', 'GLSL', 'METAL', 'WGSL', 'CUDA'] as const;
+type LanguageOptions = {
+	languageId: string,
+	requiresEntrypoint: boolean,
+}
+const compileOptionMap: { [k in (typeof compileOptions)[number]]: LanguageOptions } = {
+	HLSL: {
+		languageId: 'hlsl',
+		requiresEntrypoint: true,
+	},
+	GLSL: {
+		languageId: 'glsl',
+		requiresEntrypoint: true,
+	},
+	METAL: {
+		languageId: 'metal',
+		requiresEntrypoint: false,
+	},
+	WGSL: {
+		languageId: 'wgsl',
+		requiresEntrypoint: false,
+	},
+	CUDA: {
+		languageId: 'cuda-cpp',
+		requiresEntrypoint: true
+	}
 }
 
 async function getSlangFilesWithContents(): Promise<{ uri: string, content: string }[]> {
-    const pattern = '**/*.slang';
-    const files = await vscode.workspace.findFiles(pattern);
-    
-    const results: { uri: string, content: string }[] = [];
+	const pattern = '**/*.slang';
+	const files = await vscode.workspace.findFiles(pattern);
 
-    for (const uri of files) {
-        try {
-            const document = await vscode.workspace.openTextDocument(uri);
-            results.push({ uri: uri.toString(true), content: document.getText() });
-        } catch (err) {
-            console.error(`Failed to read ${uri.fsPath}:`, err);
-        }
-    }
+	const results: { uri: string, content: string }[] = [];
 
-    return results;
+	for (const uri of files) {
+		try {
+			const document = await vscode.workspace.openTextDocument(uri);
+			results.push({ uri: uri.toString(true), content: document.getText() });
+		} catch (err) {
+			console.error(`Failed to read ${uri.fsPath}:`, err);
+		}
+	}
+
+	return results;
 }
 
 // this method is called when vs code is activated
@@ -62,10 +83,10 @@ export async function activate(context: ExtensionContext) {
 			const entryPointName = shaderType;
 			const ret = await compileShader(userSource, entryPointName, "WGSL");
 
-			if(!ret.succ) {
+			if (!ret.succ) {
 				throw new Error("Error: Compilation failed.");
 			}
-			
+
 			let message: PlaygroundRun = {
 				userSource,
 				ret,
@@ -116,10 +137,28 @@ export async function activate(context: ExtensionContext) {
 		if (!targetSelection) {
 			return;
 		}
+		const userSource = window.activeTextEditor.document.getText() ?? '';
+		let selectedEntrypoint = ""
+		if (compileOptionMap[targetSelection].requiresEntrypoint) {
+			// Send the picked option to the server and get the result
+			const parameter: EntrypointsRequest = {
+				sourceCode: userSource,
+				shaderPath: window.activeTextEditor.document.uri.toString(true),
+			}
+			let entrypoints: EntrypointsResult = await client.sendRequest('slang/entrypoints', parameter);
+			const entrypointSelection = await window.showQuickPick(entrypoints, {
+				placeHolder: 'Select a Entrypoint',
+			}) as (typeof compileOptions)[number] | undefined;
+			if (!entrypointSelection) {
+				return;
+			}
+			selectedEntrypoint = entrypointSelection;
+		}
 		// Send the picked option to the server and get the result
 		const parameter: CompileRequest = {
 			target: targetSelection,
-			sourceCode: window.activeTextEditor.document.getText() ?? '',
+			entrypoint: selectedEntrypoint,
+			sourceCode: userSource,
 			shaderPath: window.activeTextEditor.document.uri.toString(true),
 			noWebGPU: true,
 		}
@@ -130,7 +169,7 @@ export async function activate(context: ExtensionContext) {
 		virtualDocumentContents.set(vDocName, result[0]);
 		const doc = await workspace.openTextDocument(vdocUri);
 		await window.showTextDocument(doc, { preview: false, viewColumn: window.activeTextEditor?.viewColumn }).then(editor => {
-			vscode.languages.setTextDocumentLanguage(doc, compileOptionMap[targetSelection]);
+			vscode.languages.setTextDocumentLanguage(doc, compileOptionMap[targetSelection].languageId);
 		});
 	}));
 }
@@ -186,19 +225,20 @@ async function compileShader(userSource: string, entryPoint: string, compileTarg
 	// Send the picked option to the server and get the result
 	const parameter: CompileRequest = {
 		target: compileTarget,
-		sourceCode: window.activeTextEditor.document.getText() ?? '',
+		entrypoint: entryPoint,
+		sourceCode: userSource,
 		shaderPath: window.activeTextEditor.document.uri.toString(true),
 		noWebGPU: false,
 	}
 	let compiledResult: CompilationResult = await client.sendRequest('slang/compile', parameter);
 
-    // If compile is failed, we just clear the codeGenArea
-    if (!compiledResult) {
+	// If compile is failed, we just clear the codeGenArea
+	if (!compiledResult) {
 		throw new Error("Compilation failed")
-    }
+	}
 
-    let [compiledCode, layout, hashedStrings, reflectionJsonObj, threadGroupSizes] = compiledResult;
-    let reflectionJson = reflectionJsonObj;
+	let [compiledCode, layout, hashedStrings, reflectionJsonObj, threadGroupSizes] = compiledResult;
+	let reflectionJson = reflectionJsonObj;
 
-    return { succ: true, code: compiledCode, layout: layout, hashedStrings, reflection: reflectionJson, threadGroupSizes };
+	return { succ: true, code: compiledCode, layout: layout, hashedStrings, reflection: reflectionJson, threadGroupSizes };
 }

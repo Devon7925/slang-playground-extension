@@ -9,7 +9,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import createModule from '../../media/slang-wasm.js';
 import type { LanguageServer, MainModule, CompletionContext } from '../../media/slang-wasm';
-import type { CompilationResult, CompileRequest, ServerInitializationOptions } from '../../shared/playgroundInterface';
+import type { CompilationResult, CompileRequest, EntrypointsRequest, EntrypointsResult, ServerInitializationOptions } from '../../shared/playgroundInterface';
 
 // We'll set these after dynamic import
 let slangd: LanguageServer;
@@ -346,8 +346,12 @@ connection.onDidChangeTextDocument(async (params) => {
 
 connection.onRequest('slang/compile', async (params: CompileRequest): Promise<CompilationResult> => {
 	let path = getEmscriptenURI(params.shaderPath);
-	console.log("Compile path: "+path)
-	return compiler.compile(params.sourceCode, path, "", params.target, params.noWebGPU)
+	return compiler.compile(params.sourceCode, path, params.entrypoint, params.target, params.noWebGPU)
+});
+
+connection.onRequest('slang/entrypoints', async (params: EntrypointsRequest): Promise<EntrypointsResult> => {
+	let path = getEmscriptenURI(params.shaderPath);
+	return compiler.findDefinedEntryPoints(params.sourceCode, path)
 });
 
 // Listen on the connection
