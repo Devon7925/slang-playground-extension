@@ -3,7 +3,6 @@
 - Reflection
 - Uniforms
 - Proper error handling
-- Print shaders
 - Fix readme
 
 

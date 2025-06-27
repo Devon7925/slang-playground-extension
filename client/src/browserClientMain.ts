@@ -79,7 +79,19 @@ export async function activate(context: ExtensionContext) {
 			if (shaderType == null) {
 				throw new Error("Error: In order to run the shader, please define either imageMain or printMain function in the shader code.");
 			}
-
+			if (shaderType === 'printMain') {
+				const shaderOutputLog = vscode.window.createOutputChannel(`Slang Shader Output (${window.activeTextEditor.document.fileName})`);
+				panel.webview.onDidReceiveMessage(message => {
+					if (message.type === 'log') {
+						console.log(`Shader Output: ${message.text}`);
+						shaderOutputLog.append(message.text);
+						shaderOutputLog.show(true);
+					}
+				});
+				panel.onDidDispose(() => {
+					shaderOutputLog.dispose();
+				});
+			}
 			const entryPointName = shaderType;
 			const ret = await compileShader(userSource, entryPointName, "WGSL");
 

@@ -382,6 +382,12 @@ function resetMouse() {
 
 let timeAggregate = 0;
 let frameCount = 0;
+declare function acquireVsCodeApi(): {
+    postMessage: (msg: any) => void;
+    setState: (state: any) => void;
+    getState: () => any;
+};
+const vscode = acquireVsCodeApi();
 
 async function execFrame(timeMS: number, currentDisplayMode: ShaderType, playgroundData: CompiledPlayground, firstFrame: boolean) {
     if (currentDisplayMode == null)
@@ -452,16 +458,23 @@ async function execFrame(timeMS: number, currentDisplayMode: ShaderType, playgro
     if (!(printfBufferRead instanceof GPUBuffer)) {
         throw new Error("printfBufferRead is not a buffer");
     }
+    let g_printedBuffer = allocatedResources.get("g_printedBuffer")
+    if (!(g_printedBuffer instanceof GPUBuffer)) {
+        throw new Error("g_printedBuffer is not a buffer");
+    }
     if (currentDisplayMode == "printMain") {
         encoder.clearBuffer(printfBufferRead);
+        encoder.clearBuffer(g_printedBuffer);
     }
 
     // zip the computePipelines and callCommands together
+    let anyEntryPointRan = false;
     for (const [pipeline, command] of playgroundData.callCommands.map((x: CallCommand, i: number) => [computePipelines[i], x] as const)) {
         if (command.callOnce && !firstFrame) {
             // If the command is marked as callOnce and it's not the first frame, skip it.
             continue;
         }
+        anyEntryPointRan = true;
         const pass = encoder.beginComputePass({ label: `${command.fnName} compute pass` });
         pass.setBindGroup(0, pipeline.bindGroup || null);
         if (pipeline.pipeline == undefined) {
@@ -521,6 +534,10 @@ async function execFrame(timeMS: number, currentDisplayMode: ShaderType, playgro
         pass.end();
     }
 
+    if(!anyEntryPointRan) {
+        pauseRender.value = true;
+    }
+
     if (currentDisplayMode == "imageMain") {
         const renderPassDescriptor = passThroughPipeline.createRenderPassDesc(context.getCurrentTexture().createView());
         const renderPass = encoder.beginRenderPass(renderPassDescriptor);
@@ -536,10 +553,6 @@ async function execFrame(timeMS: number, currentDisplayMode: ShaderType, playgro
 
     // copy output buffer back in print mode
     if (currentDisplayMode == "printMain") {
-        let g_printedBuffer = allocatedResources.get("g_printedBuffer")
-        if (!(g_printedBuffer instanceof GPUBuffer)) {
-            throw new Error("g_printedBuffer is not a buffer");
-        }
         encoder.copyBufferToBuffer(
             g_printedBuffer, 0, printfBufferRead, 0, g_printedBuffer.size);
     }
@@ -553,17 +566,19 @@ async function execFrame(timeMS: number, currentDisplayMode: ShaderType, playgro
     if (currentDisplayMode == "printMain") {
         await printfBufferRead.mapAsync(GPUMapMode.READ);
 
-        let textResult = "";
         const formatPrint = parsePrintfBuffer(
             compiledCode.shader.hashedStrings,
             printfBufferRead,
             printfBufferElementSize);
 
-        if (formatPrint.length != 0)
-            textResult += "Shader Output:\n" + formatPrint.join("") + "\n";
+        if (formatPrint.length != 0) {
+            vscode.postMessage({
+                type: 'log',
+                text: formatPrint.join("")
+            });
+        }
 
         printfBufferRead.unmap();
-        console.log(textResult);
     }
 
     const timeElapsed = performance.now() - startTime;
@@ -871,7 +886,7 @@ async function processResourceCommands(resourceBindings: Bindings, resourceComma
     //
     safeSet(allocatedResources, "g_printedBuffer", device.createBuffer({
         size: printfBufferSize,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     }));
 
     safeSet(allocatedResources, "printfBufferRead", device.createBuffer({
