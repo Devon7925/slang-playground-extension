@@ -1,9 +1,9 @@
 name: Continuous Integration for PR
 
 on:
-  pull_request:
-    branches:
-      - main
+  push:
+    tags:
+    - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
 
 jobs:
   # Build job
@@ -18,15 +18,20 @@ jobs:
         with:
           build-artifacts-dir: ./media
 
-      - name: Build
+      - name: Build and Publish
+        env:
+          VSCE_TOKEN: ${{ secrets.VS_MARKETPLACE_TOKEN }}
         run: |
           npm install
           npm run compile
+          npm install -g @vscode/vsce
+          vsce package
+          vsce publish -p "$VSCE_TOKEN"
           mv ./*.vsix dist/
 
       - name: Upload export artifact
         uses: actions/upload-artifact@v4
         with:
-          name: site-artifact
+          name: vsix-release
           path: ./dist/
           compression-level: 1
