@@ -1,0 +1,32 @@
+name: Continuous Integration for PR
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # Build job
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and cache WASM dependencies
+        uses: ./.github/actions/build-wasm-deps
+        with:
+          build-artifacts-dir: ./media
+
+      - name: Build
+        run: |
+          npm install
+          npm run compile
+          mv ./*.vsix dist/
+
+      - name: Upload export artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-artifact
+          path: ./dist/
+          compression-level: 1
