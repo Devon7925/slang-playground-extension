@@ -10,6 +10,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import createModule from '../../media/slang-wasm.js';
 import type { LanguageServer, MainModule, CompletionContext } from '../../media/slang-wasm';
 import type { CompilationResult, CompileRequest, EntrypointsRequest, EntrypointsResult, ServerInitializationOptions } from '../../shared/playgroundInterface';
+import playgroundSource from "./slang/playground.slang";
 
 // We'll set these after dynamic import
 let slangd: LanguageServer;
@@ -84,10 +85,6 @@ function loadFileIntoEmscriptenFS(uri: string, content: string) {
 	}
 
 	// Write the actual file
-	if (pathData.exists) {
-		console.log("file already exists " + uri)
-		return
-	}
 	slangWasmModule.FS.writeFile(uri, content);
 }
 
@@ -294,12 +291,30 @@ connection.onDocumentSymbol(async (params, _token) => {
 	return symbols;
 });
 
+// This whole technique is somewhat hacky, but I'm not sure there's a better way to make playground imports work
+const loadedPlaygroundFiles: Set<string> = new Set();
+function openPlayground(wasmURI: string) {
+	let splitUri = wasmURI.split('/');
+	splitUri.pop(); // Remove the file name
+	const playgroundURI = splitUri.join('/') + '/playground.slang';
+	if (loadedPlaygroundFiles.has(playgroundURI)) {
+		return; // Already opened
+	}
+	const emscriptenPlaygroundURI = removePrefix(playgroundURI, "file:///");
+	loadedPlaygroundFiles.add(playgroundURI);
+	slangd.didOpenTextDocument(playgroundURI, playgroundSource);
+	loadFileIntoEmscriptenFS(emscriptenPlaygroundURI, playgroundSource);
+	console.log("Loading playground file " + playgroundURI);
+}
+
 connection.onDidOpenTextDocument(async (params) => {
 	const uri = params.textDocument.uri;
 	const wasmURI = getSlangdURI(uri);
 	const emscriptenURI = getEmscriptenURI(uri);
 	loadFileIntoEmscriptenFS(emscriptenURI, params.textDocument.text);
 	slangd.didOpenTextDocument(wasmURI, params.textDocument.text);
+	
+	openPlayground(wasmURI)
 });
 // Diagnostics (textDocument/didChange, didOpen, didClose handled by TextDocuments)
 connection.onDidChangeTextDocument(async (params) => {
