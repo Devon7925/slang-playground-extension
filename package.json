@@ -34,14 +34,32 @@
             {
                 "command": "slang.compile",
                 "title": "Slang Compile",
-                "category": "Slang"
+                "category": "Slang",
+                "enablement": "editorLangId == slang",
+                "icon": "$(tools)"
             },
             {
                 "command": "slang.playgroundRun",
                 "title": "Run Playground",
-                "category": "Slang"
+                "category": "Slang",
+                "enablement": "editorLangId == slang",
+                "icon": "$(run)"
             }
         ],
+        "menus": {
+            "editor/title": [
+                {
+                    "command": "slang.compile",
+                    "when": "resourceLangId == slang",
+                    "group": "navigation"
+                },
+                {
+                    "command": "slang.playgroundRun",
+                    "when": "resourceLangId == slang",
+                    "group": "navigation"
+                }
+            ]
+        },
         "languages": [
             {
                 "id": "slang",
@@ -87,6 +105,18 @@
                         "description": "Traces the communication between VS Code and the lsp-web-extension-sample language server."
                     }
                 }
+            }
+        ],
+        "keybindings": [
+            {
+                "command": "slang.compile",
+                "key": "ctrl+shift+b",
+                "when": "editorLangId == slang"
+            },
+            {
+                "command": "slang.playgroundRun",
+                "key": "ctrl+shift+r",
+                "when": "editorLangId == slang"
             }
         ]
     },
