@@ -1,8 +1,8 @@
 - SPIRV compilation
 - Help/Docs
-- Reflection
 - Uniforms
 - Proper error handling
+- URL Image loading
 - Fix readme
 
 

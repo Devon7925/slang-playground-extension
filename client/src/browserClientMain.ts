@@ -184,6 +184,27 @@ export async function activate(context: ExtensionContext) {
 			vscode.languages.setTextDocumentLanguage(doc, compileOptionMap[targetSelection].languageId);
 		});
 	}));
+
+	context.subscriptions.push(commands.registerCommand('slang.reflection', async () => {
+		const userSource = window.activeTextEditor.document.getText() ?? '';
+		// Send the picked option to the server and get the result
+		const parameter: CompileRequest = {
+			target: "WGSL",
+			entrypoint: "",
+			sourceCode: userSource,
+			shaderPath: window.activeTextEditor.document.uri.toString(true),
+			noWebGPU: true,
+		}
+		let result: CompilationResult = await client.sendRequest('slang/compile', parameter);
+		const vDocName = `Slang Reflection (${window.activeTextEditor.document.fileName.replace('\\', "")})`
+		// Show the result in a readonly virtual document
+		const vdocUri = Uri.parse(`${slangVirtualScheme}:/${vDocName}`);
+		virtualDocumentContents.set(vDocName, JSON.stringify(result[3], undefined, 4));
+		const doc = await workspace.openTextDocument(vdocUri);
+		await window.showTextDocument(doc, { preview: false, viewColumn: window.activeTextEditor?.viewColumn }).then(editor => {
+			vscode.languages.setTextDocumentLanguage(doc, "json");
+		});
+	}));
 }
 
 export async function deactivate(): Promise<void> {

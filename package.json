@@ -44,6 +44,13 @@
                 "category": "Slang",
                 "enablement": "editorLangId == slang",
                 "icon": "$(run)"
+            },
+            {
+                "command": "slang.reflection",
+                "title": "Show Reflection",
+                "category": "Slang",
+                "enablement": "editorLangId == slang",
+                "icon": "$(search)"
             }
         ],
         "menus": {
@@ -51,12 +58,17 @@
                 {
                     "command": "slang.compile",
                     "when": "resourceLangId == slang",
-                    "group": "navigation"
+                    "group": "navigation@1"
                 },
                 {
                     "command": "slang.playgroundRun",
                     "when": "resourceLangId == slang",
-                    "group": "navigation"
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "slang.reflection",
+                    "when": "resourceLangId == slang",
+                    "group": "navigation@3"
                 }
             ]
         },
