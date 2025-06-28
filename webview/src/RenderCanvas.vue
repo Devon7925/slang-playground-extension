@@ -25,6 +25,7 @@ export type CompiledPlayground = {
     uniformComponents: UniformController[],
 }
 
+let fileUri: string;
 let context: GPUCanvasContext;
 let shaderType: RunnableShaderType;
 let randFloatPipeline: ComputePipeline;
@@ -735,18 +736,23 @@ async function processResourceCommands(resourceBindings: Bindings, resourceComma
             if (!bindingInfo.texture) {
                 throw new Error(`Resource ${resourceName} is not a texture.`);
             }
+            console.log(`Loading image from URL: ${parsedCommand.url}`);
 
 
             const format = parsedCommand.format;
 
             const image = new Image();
+
+            let url = new URL(parsedCommand.url, fileUri).href; // Resolve relative URLs against the file URI
+            console.log(url);
+
             try {
                 // TODO: Pop-up a warning if the image is not CORS-enabled.
                 // TODO: Pop-up a warning for the user to confirm that its okay to load a cross-origin image (i.e. do you trust this code..)
                 //
                 image.crossOrigin = "anonymous";
 
-                image.src = parsedCommand.url;
+                image.src = url;
                 await image.decode();
             }
             catch (error) {
@@ -971,6 +977,7 @@ function onRun(runCompiledCode: CompiledPlayground) {
 async function tryRun(playgroundRun: PlaygroundRun) {
     // We will have some restrictions on runnable shader, the user code has to define imageMain or printMain function.
     // We will do a pre-filter on the user input source code, if it's not runnable, we will not run it.
+    fileUri = playgroundRun.uri;
     shaderType = checkShaderType(playgroundRun.userSource);
     if (shaderType == null) {
         throw new Error("Error: In order to run the shader, please define either imageMain or printMain function in the shader code.");

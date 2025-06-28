@@ -63,6 +63,9 @@ export async function activate(context: ExtensionContext) {
 	// Register Playground Run command to open a webview
 	context.subscriptions.push(
 		commands.registerCommand('slang.playgroundRun', async () => {
+			const userSource = window.activeTextEditor.document.getText();
+			const userURI = window.activeTextEditor.document.uri;
+
 			const panel = window.createWebviewPanel(
 				'slangPlayground',
 				'Slang Playground',
@@ -73,8 +76,6 @@ export async function activate(context: ExtensionContext) {
 				}
 			);
 			panel.webview.html = getPlaygroundWebviewContent(context, panel);
-
-			const userSource = window.activeTextEditor.document.getText();
 			const shaderType = checkShaderType(userSource);
 			if (shaderType == null) {
 				throw new Error("Error: In order to run the shader, please define either imageMain or printMain function in the shader code.");
@@ -102,6 +103,7 @@ export async function activate(context: ExtensionContext) {
 			let message: PlaygroundRun = {
 				userSource,
 				ret,
+				uri: panel.webview.asWebviewUri(userURI).toString()
 			};
 			panel.webview.postMessage(message)
 		})

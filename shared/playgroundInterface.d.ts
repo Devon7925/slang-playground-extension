@@ -105,4 +105,5 @@ export type MaybeShader = Shader | {
 export type PlaygroundRun = {
 	userSource: string,
 	ret: Shader,
+	uri: string,
 }
