@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 import { LanguageClientOptions } from 'vscode-languageclient';
 
 import { LanguageClient } from 'vscode-languageclient/browser';
-import type { CompilationResult, CompileRequest, EntrypointsRequest, EntrypointsResult, MaybeShader, PlaygroundRun, ServerInitializationOptions } from '../../shared/playgroundInterface';
+import type { CompileRequest, EntrypointsRequest, EntrypointsResult, MaybeShader, PlaygroundRun, ServerInitializationOptions } from '../../shared/playgroundInterface';
 import { checkShaderType } from "../../shared/util.js";
 
 let client: LanguageClient;
@@ -82,7 +82,8 @@ export async function activate(context: ExtensionContext) {
 			panel.webview.html = getPlaygroundWebviewContent(context, panel);
 			const shaderType = checkShaderType(userSource);
 			if (shaderType == null) {
-				throw new Error("Error: In order to run the shader, please define either imageMain or printMain function in the shader code.");
+				vscode.window.showErrorMessage("Error: In order to run the shader, please define either imageMain or printMain function in the shader code.");
+				return;
 			}
 			if (shaderType === 'printMain') {
 				const shaderOutputLog = vscode.window.createOutputChannel(`Slang Shader Output (${window.activeTextEditor.document.fileName})`);
@@ -97,16 +98,22 @@ export async function activate(context: ExtensionContext) {
 					shaderOutputLog.dispose();
 				});
 			}
-			const entryPointName = shaderType;
-			const ret = await compileShader(userSource, entryPointName, "WGSL");
+			let result: MaybeShader = await compileShader({
+				target: "WGSL",
+				entrypoint: shaderType,
+				sourceCode: userSource,
+				shaderPath: window.activeTextEditor.document.uri.toString(true),
+				noWebGPU: false,
+			});
 
-			if (!ret.succ) {
-				throw new Error("Error: Compilation failed.");
+			if (result.succ == false) {
+				vscode.window.showErrorMessage(result.message);
+				return;
 			}
 
 			let message: PlaygroundRun = {
 				userSource,
-				ret,
+				ret: result,
 				uri: panel.webview.asWebviewUri(userURI).toString()
 			};
 			panel.webview.postMessage(message)
@@ -173,18 +180,21 @@ export async function activate(context: ExtensionContext) {
 			selectedEntrypoint = entrypointSelection;
 		}
 		// Send the picked option to the server and get the result
-		const parameter: CompileRequest = {
+		let result: MaybeShader = await compileShader({
 			target: targetSelection,
 			entrypoint: selectedEntrypoint,
 			sourceCode: userSource,
 			shaderPath: window.activeTextEditor.document.uri.toString(true),
 			noWebGPU: true,
+		});
+		if (result.succ == false) {
+			vscode.window.showErrorMessage(result.message);
+			return;
 		}
-		let result: CompilationResult = await client.sendRequest('slang/compile', parameter);
 		const vDocName = `Slang Compile (${targetSelection})`
 		// Show the result in a readonly virtual document
 		const vdocUri = Uri.parse(`${slangVirtualScheme}:/${vDocName}`);
-		virtualDocumentContents.set(vDocName, result[0]);
+		virtualDocumentContents.set(vDocName, result.code);
 		const doc = await workspace.openTextDocument(vdocUri);
 		await window.showTextDocument(doc, { preview: false, viewColumn: window.activeTextEditor?.viewColumn }).then(editor => {
 			vscode.languages.setTextDocumentLanguage(doc, compileOptionMap[targetSelection].languageId);
@@ -194,18 +204,21 @@ export async function activate(context: ExtensionContext) {
 	context.subscriptions.push(commands.registerCommand('slang.reflection', async () => {
 		const userSource = window.activeTextEditor.document.getText() ?? '';
 		// Send the picked option to the server and get the result
-		const parameter: CompileRequest = {
+		let result: MaybeShader = await compileShader({
 			target: "WGSL",
 			entrypoint: "",
 			sourceCode: userSource,
 			shaderPath: window.activeTextEditor.document.uri.toString(true),
 			noWebGPU: true,
+		});
+		if (result.succ == false) {
+			vscode.window.showErrorMessage(result.message);
+			return;
 		}
-		let result: CompilationResult = await client.sendRequest('slang/compile', parameter);
 		const vDocName = `Slang Reflection (${window.activeTextEditor.document.fileName.replace('\\', "")})`
 		// Show the result in a readonly virtual document
 		const vdocUri = Uri.parse(`${slangVirtualScheme}:/${vDocName}`);
-		virtualDocumentContents.set(vDocName, JSON.stringify(result[3], undefined, 4));
+		virtualDocumentContents.set(vDocName, JSON.stringify(result.reflection, undefined, 4));
 		const doc = await workspace.openTextDocument(vdocUri);
 		await window.showTextDocument(doc, { preview: false, viewColumn: window.activeTextEditor?.viewColumn }).then(editor => {
 			vscode.languages.setTextDocumentLanguage(doc, "json");
@@ -214,7 +227,7 @@ export async function activate(context: ExtensionContext) {
 
 	context.subscriptions.push(commands.registerCommand('slang.playgroundDocumentation', async () => {
 		const mdFile = vscode.Uri.joinPath(context.extensionUri, 'media', 'playgroundDocumentation.md')
-  		await vscode.commands.executeCommand('markdown.showPreviewToSide', mdFile);
+		await vscode.commands.executeCommand('markdown.showPreviewToSide', mdFile);
 	}));
 }
 
@@ -265,24 +278,6 @@ export function getPlaygroundWebviewContent(context: ExtensionContext, panel: vs
 `;
 }
 
-async function compileShader(userSource: string, entryPoint: string, compileTarget: (typeof compileOptions)[number]): Promise<MaybeShader> {
-	// Send the picked option to the server and get the result
-	const parameter: CompileRequest = {
-		target: compileTarget,
-		entrypoint: entryPoint,
-		sourceCode: userSource,
-		shaderPath: window.activeTextEditor.document.uri.toString(true),
-		noWebGPU: false,
-	}
-	let compiledResult: CompilationResult = await client.sendRequest('slang/compile', parameter);
-
-	// If compile is failed, we just clear the codeGenArea
-	if (!compiledResult) {
-		throw new Error("Compilation failed")
-	}
-
-	let [compiledCode, layout, hashedStrings, reflectionJsonObj, threadGroupSizes] = compiledResult;
-	let reflectionJson = reflectionJsonObj;
-
-	return { succ: true, code: compiledCode, layout: layout, hashedStrings, reflection: reflectionJson, threadGroupSizes };
+async function compileShader(parameter: CompileRequest): Promise<MaybeShader> {
+	return await client.sendRequest('slang/compile', parameter);
 }

@@ -58,9 +58,9 @@ const frameTime = ref(0);
 const frameID = ref(0);
 const fps = ref(0);
 
-let device;
+let device: GPUDevice;
 
-async function tryGetDevice() {
+async function tryGetDevice(): Promise<GPUDevice | null> {
     if (!isWebGPUSupported()) {
         console.log('WebGPU is not supported in this browser');
         return null;

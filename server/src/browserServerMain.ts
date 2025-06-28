@@ -11,7 +11,7 @@ import createModule from '../../media/slang-wasm.js';
 import type { LanguageServer, MainModule, CompletionContext } from '../../media/slang-wasm';
 import createSpirvModule from '../../media/spirv-tools.js';
 import type { SpirvTools } from '../../media/spirv-tools';
-import type { CompilationResult, CompileRequest, EntrypointsRequest, EntrypointsResult, ServerInitializationOptions } from '../../shared/playgroundInterface';
+import type { CompileRequest, EntrypointsRequest, EntrypointsResult, MaybeShader, ServerInitializationOptions } from '../../shared/playgroundInterface';
 import playgroundSource from "./slang/playground.slang";
 
 // We'll set these after dynamic import
@@ -374,14 +374,14 @@ connection.onDidChangeTextDocument(async (params) => {
 	}
 });
 
-connection.onRequest('slang/compile', async (params: CompileRequest): Promise<CompilationResult> => {
+connection.onRequest('slang/compile', async (params: CompileRequest): Promise<MaybeShader> => {
 	let path = getEmscriptenURI(params.shaderPath);
 	let compilation = compiler.compile(params.sourceCode, path, params.entrypoint, params.target, params.noWebGPU);
-	if(!compilation) return null;// todo improve error handling
+	if(compilation.succ == false) return compilation;
 	if(params.target === "SPIRV") {
 		await ensureSpirvModuleLoaded();
         let disAsmCode = spirvWasmModule.dis(
-            compilation[0] as any,// todo improve typing
+            compilation.code as any,// todo improve typing
             spirvWasmModule.SPV_ENV_UNIVERSAL_1_3,
             spirvWasmModule.SPV_BINARY_TO_TEXT_OPTION_INDENT |
             spirvWasmModule.SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES
@@ -389,10 +389,13 @@ connection.onRequest('slang/compile', async (params: CompileRequest): Promise<Co
 
 
         if (disAsmCode == "Error") {
-			return null;// todo improve error handling
+			return {
+				succ: false,
+				message: "Failed to get spirv string representation"
+			};
         }
 
-		compilation[0] = disAsmCode;
+		compilation.code = disAsmCode;
 	}
 	return compilation;
 });

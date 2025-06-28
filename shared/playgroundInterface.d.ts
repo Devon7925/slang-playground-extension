@@ -85,8 +85,6 @@ export type ReflectionUserAttribute = {
 	"name": string,
 };
 
-export type CompilationResult = null | [string, Bindings, HashedStringData, ReflectionJSON, { [key: string]: [number, number, number] }];
-
 export type EntrypointsResult = string[]
 
 export type Shader = {
@@ -99,7 +97,8 @@ export type Shader = {
 };
 
 export type MaybeShader = Shader | {
-	succ: false
+	succ: false,
+	message: string
 };
 
 export type PlaygroundRun = {

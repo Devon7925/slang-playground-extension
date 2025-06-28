@@ -3,7 +3,7 @@ import playgroundSource from "./slang/playground.slang";
 import imageMainSource from "./slang/imageMain.slang";
 import printMainSource from "./slang/printMain.slang";
 import { ACCESS_MAP, getTextureFormat, webgpuFormatfromSlangFormat, type RunnableShaderType, type ShaderType, RUNNABLE_ENTRY_POINT_NAMES } from "../../shared/util.js";
-import type { HashedStringData, ScalarType, ReflectionParameter, ReflectionJSON, CompilationResult, Bindings } from '../../shared/playgroundInterface.js'
+import type { HashedStringData, ScalarType, ReflectionParameter, ReflectionJSON, Bindings, MaybeShader } from '../../shared/playgroundInterface.js'
 
 export function isWholeProgramTarget(compileTarget: string) {
 	return compileTarget == "METAL" || compileTarget == "SPIRV" || compileTarget == "WGSL";
@@ -71,7 +71,7 @@ export class SlangCompiler {
 	}
 
 	// In our playground, we only allow to run shaders with two entry points: renderMain and printMain
-	findRunnableEntryPoint(module: Module) {
+	findRunnableEntryPoint(module: Module): Module | null {
 		for (let entryPointName of RUNNABLE_ENTRY_POINT_NAMES) {
 			let entryPoint = module.findAndCheckEntryPoint(entryPointName, SlangCompiler.SLANG_STAGE_COMPUTE);
 			if (entryPoint) {
@@ -83,7 +83,7 @@ export class SlangCompiler {
 		return null;
 	}
 
-	findEntryPoint(module: Module, entryPointName: string | null, stage: number) {
+	findEntryPoint(module: Module, entryPointName: string | null, stage: number): Module | null {
 		if (entryPointName == null || entryPointName == "") {
 			const entryPoint = this.findRunnableEntryPoint(module);
 			if (!entryPoint) {
@@ -382,17 +382,17 @@ export class SlangCompiler {
 		return true;
 	}
 
-	compile(shaderSource: string, shaderPath: string, entryPointName: string, compileTargetStr: string, noWebGPU: boolean): CompilationResult {
-		this.diagnosticsMsg = "";
-
+	compile(shaderSource: string, shaderPath: string, entryPointName: string, compileTargetStr: string, noWebGPU: boolean): MaybeShader {
 		let shouldLinkPlaygroundModule = RUNNABLE_ENTRY_POINT_NAMES.some((entry_point) => shaderSource.match(entry_point) != null);
 
 		const compileTarget = this.findCompileTarget(compileTargetStr);
 		let isWholeProgram = isWholeProgramTarget(compileTargetStr);
 
 		if (!compileTarget) {
-			this.diagnosticsMsg = "unknown compile target: " + compileTargetStr;
-			return null;
+			return {
+				succ: false,
+				message: "unknown compile target: " + compileTargetStr
+			};
 		}
 
 		const split_dir = shaderPath.split('/');
@@ -406,9 +406,10 @@ export class SlangCompiler {
 			let slangSession = this.globalSlangSession.createSession(compileTarget);
 			if (!slangSession) {
 				let error = this.slangWasmModule.getLastError();
-				console.error(error.type + " error: " + error.message);
-				this.diagnosticsMsg += (error.type + " error: " + error.message);
-				return null;
+				return {
+					succ: false,
+					message: (error.type + " error: " + error.message)
+				};
 			}
 
 			let components: Module[] = [];
@@ -416,13 +417,22 @@ export class SlangCompiler {
 			let userModuleIndex = 0;
 			if (shouldLinkPlaygroundModule) {
 				if (!this.loadModule(slangSession, "playground", dir + "/playground.slang", playgroundSource, components))
-					return null;
+					return {
+						succ: false,
+						message: "Unable to load playground module"
+					};
 				userModuleIndex++;
 			}
 			if (!this.loadModule(slangSession, "user", dir + '/user.slang', shaderSource, components))
-				return null;
+				return {
+					succ: false,
+					message: "Unable to load user module"
+				};
 			if (this.addActiveEntryPoints(slangSession, shaderSource, shaderPath, entryPointName, isWholeProgram, components[userModuleIndex], components) == false)
-				return null;
+				return {
+					succ: false,
+					message: "Unable to add entry points"
+				};
 			let program: ComponentType = slangSession.createCompositeComponentType(components);
 			let linkedProgram: ComponentType = program.link();
 
@@ -470,28 +480,44 @@ export class SlangCompiler {
 				threadGroupSizes[entryPoint.name] = entryPoint.threadGroupSize;
 			}
 
-			if (outCode == "") {
+			if (!outCode || outCode == "") {
 				let error = this.slangWasmModule.getLastError();
 				console.error(error.type + " error: " + error.message);
 				this.diagnosticsMsg += (error.type + " error: " + error.message);
-				return null;
+				return {
+					succ: false,
+					message: `${error.type} error: ${error.message}`
+				};
 			}
 
 			if (slangSession)
 				slangSession.delete();
-			if (!outCode || outCode == "")
-				return null;
 
-			return [outCode, bindings, hashedStrings, reflectionJson, threadGroupSizes];
+			return {
+				succ: true,
+				code: outCode,
+				layout: bindings,
+				hashedStrings: hashedStrings,
+				reflection: reflectionJson,
+				threadGroupSizes: threadGroupSizes,
+			};
 		} catch (e) {
-			console.error(e);
 			// typescript is missing the type for WebAssembly.Exception
 			if (typeof e === 'object' && e !== null && e.constructor.name === 'Exception') {
-				this.diagnosticsMsg += "Slang internal error occurred.\n";
+				return {
+					succ: false,
+					message: "Slang internal error occurred."
+				};
 			} else if (e instanceof Error) {
-				this.diagnosticsMsg += e.message;
+				return {
+					succ: false,
+					message: e.message
+				};
 			}
-			return null;
+			return {
+				succ: false,
+				message: "Unknown error occurred"
+			};
 		}
 	}
 };
