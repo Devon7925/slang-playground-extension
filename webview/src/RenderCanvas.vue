@@ -1,29 +1,9 @@
 <script setup lang="ts">
 import { ComputePipeline } from './compute';
 import { GraphicsPipeline, passThroughshaderCode } from './pass_through';
-import { type CallCommand, NotReadyError, parsePrintfBuffer, type ResourceCommand, sizeFromFormat, UniformController, type RunnableShaderType, ShaderType, isWebGPUSupported, getResourceCommandsFromAttributes, getUniformSize, parseCallCommands, getUniformControllers, RUNNABLE_ENTRY_POINT_NAMES, checkShaderType } from '../../shared/util';
-import type { Bindings, CompileRequest, HashedStringData, PlaygroundRun, ReflectionJSON } from '../../shared/playgroundInterface';
+import { NotReadyError, parsePrintfBuffer, sizeFromFormat, isWebGPUSupported } from '../../shared/util';
+import type { Bindings, CallCommand, CompiledPlayground, ResourceCommand, RunnableShaderType, ShaderType } from '../../shared/playgroundInterface';
 import { onMounted, ref, useTemplateRef, type Ref } from 'vue';
-
-
-export type Shader = {
-    succ: true,
-    code: string,
-    layout: Bindings,
-    hashedStrings: HashedStringData,
-    reflection: ReflectionJSON,
-    threadGroupSizes: { [key: string]: [number, number, number] },
-};
-
-export type CompiledPlayground = {
-    slangSource: string,
-    shader: Shader,
-    mainEntryPoint: RunnableShaderType,
-    resourceCommands: ResourceCommand[],
-    callCommands: CallCommand[],
-    uniformSize: number,
-    uniformComponents: UniformController[],
-}
 
 let fileUri: string;
 let context: GPUCanvasContext;
@@ -80,10 +60,6 @@ async function tryGetDevice(): Promise<GPUDevice | null> {
     return device;
 }
 
-defineExpose({
-    onRun
-});
-
 /**
  * Toggle full screen on the canvas container.
  */
@@ -97,12 +73,12 @@ function toggleFullscreen() {
     }
 }
 
-let queuedPlaygroundRunData: PlaygroundRun | undefined = undefined;
+let queuedPlaygroundRunData: CompiledPlayground | undefined = undefined;
 
 window.addEventListener('message', event => {
-    const playgroundRunData: PlaygroundRun = event.data;
+    const playgroundRunData: CompiledPlayground = event.data;
     if(device != undefined)
-        tryRun(playgroundRunData)
+        onRun(playgroundRunData)
     else
         queuedPlaygroundRunData = playgroundRunData
 });
@@ -128,7 +104,7 @@ onMounted(async () => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     if(queuedPlaygroundRunData != undefined) {
-        tryRun(queuedPlaygroundRunData)
+        onRun(queuedPlaygroundRunData)
         queuedPlaygroundRunData = undefined;
     }
 })
@@ -913,6 +889,9 @@ function onRun(runCompiledCode: CompiledPlayground) {
     timeAggregate = 0;
     frameCount = 0;
 
+    shaderType = runCompiledCode.mainEntryPoint;
+    fileUri = runCompiledCode.uri;
+
     resetMouse();
 
     let firstFrame = true;
@@ -972,40 +951,6 @@ function onRun(runCompiledCode: CompiledPlayground) {
             firstFrame = false;
             return keepRendering;
         });
-}
-
-async function tryRun(playgroundRun: PlaygroundRun) {
-    // We will have some restrictions on runnable shader, the user code has to define imageMain or printMain function.
-    // We will do a pre-filter on the user input source code, if it's not runnable, we will not run it.
-    fileUri = playgroundRun.uri;
-    shaderType = checkShaderType(playgroundRun.userSource);
-    if (shaderType == null) {
-        throw new Error("Error: In order to run the shader, please define either imageMain or printMain function in the shader code.");
-    }
-
-    const entryPointName = shaderType;
-
-    let resourceCommands = getResourceCommandsFromAttributes(playgroundRun.ret.reflection);
-    let uniformSize = getUniformSize(playgroundRun.ret.reflection)
-    let uniformComponents = getUniformControllers(resourceCommands)
-
-    let callCommands: CallCommand[] | null = null;
-    try {
-        callCommands = parseCallCommands(playgroundRun.ret.reflection);
-    }
-    catch (error: any) {
-        throw new Error("Error while parsing CALL commands: " + error.message);
-    }
-
-    onRun({
-        slangSource: playgroundRun.userSource,
-        shader: playgroundRun.ret,
-        mainEntryPoint: entryPointName,
-        resourceCommands,
-        callCommands,
-        uniformSize,
-        uniformComponents,
-    });
 }
 </script>
 

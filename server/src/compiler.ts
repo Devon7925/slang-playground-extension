@@ -2,8 +2,8 @@ import type { ComponentType, EmbindString, GlobalSession, MainModule, Module, Se
 import playgroundSource from "./slang/playground.slang";
 import imageMainSource from "./slang/imageMain.slang";
 import printMainSource from "./slang/printMain.slang";
-import { ACCESS_MAP, getTextureFormat, webgpuFormatfromSlangFormat, type RunnableShaderType, type ShaderType, RUNNABLE_ENTRY_POINT_NAMES } from "../../shared/util.js";
-import type { HashedStringData, ScalarType, ReflectionParameter, ReflectionJSON, Bindings, MaybeShader } from '../../shared/playgroundInterface.js'
+import { ACCESS_MAP, getTextureFormat, webgpuFormatfromSlangFormat, RUNNABLE_ENTRY_POINT_NAMES } from "../../shared/util.js";
+import type { HashedStringData, ScalarType, ReflectionParameter, ReflectionJSON, Bindings, RunnableShaderType, ShaderType, Shader, Result } from '../../shared/playgroundInterface.js'
 
 export function isWholeProgramTarget(compileTarget: string) {
 	return compileTarget == "METAL" || compileTarget == "SPIRV" || compileTarget == "WGSL";
@@ -104,31 +104,6 @@ export class SlangCompiler {
 		}
 	}
 
-	// async initSpirvTools() {
-	//     if (!this.spirvToolsModule) {
-	//         this.spirvToolsModule = await spirvTools();
-	//     }
-	// }
-
-	// spirvDisassembly(spirvBinary: any) {
-	//     if (!this.spirvToolsModule)
-	//         throw new Error("Spirv tools not initialized");
-	//     let disAsmCode = this.spirvToolsModule.dis(
-	//         spirvBinary,
-	//         this.spirvToolsModule.SPV_ENV_UNIVERSAL_1_3,
-	//         this.spirvToolsModule.SPV_BINARY_TO_TEXT_OPTION_INDENT |
-	//         this.spirvToolsModule.SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES
-	//     );
-
-
-	//     if (disAsmCode == "Error") {
-	//         this.diagnosticsMsg += ("SPIRV disassembly error");
-	//         disAsmCode = "";
-	//     }
-
-	//     return disAsmCode;
-	// }
-
 	// If user code defines imageMain or printMain, we will know the entry point name because they're
 	// already defined in our pre-built module. So we will add those one of those entry points to the
 	// dropdown list. Then, we will find whether user code also defines other entry points, if it has
@@ -154,9 +129,9 @@ export class SlangCompiler {
 			}
 			let module: Module | null = null;
 			if (runnable.length > 0) {
-				slangSession.loadModuleFromSource(playgroundSource, "playground", dir+"/playground.slang");
+				slangSession.loadModuleFromSource(playgroundSource, "playground", dir + "/playground.slang");
 			}
-			module = slangSession.loadModuleFromSource(shaderSource, "user", dir+"/user.slang");
+			module = slangSession.loadModuleFromSource(shaderSource, "user", dir + "/user.slang");
 			if (!module) {
 				const error = this.slangWasmModule.getLastError();
 				console.error(error.type + " error: " + error.message);
@@ -198,7 +173,7 @@ export class SlangCompiler {
 		if (source == undefined) {
 			throw new Error(`Could not get module ${moduleName}`);
 		}
-		let module: Module | null = slangSession.loadModuleFromSource(source, moduleName, dir+'/' + moduleName + '.slang');
+		let module: Module | null = slangSession.loadModuleFromSource(source, moduleName, dir + '/' + moduleName + '.slang');
 
 		if (!module) {
 			const error = this.slangWasmModule.getLastError();
@@ -382,7 +357,7 @@ export class SlangCompiler {
 		return true;
 	}
 
-	compile(shaderSource: string, shaderPath: string, entryPointName: string, compileTargetStr: string, noWebGPU: boolean): MaybeShader {
+	compile(shaderSource: string, shaderPath: string, entryPointName: string, compileTargetStr: string, noWebGPU: boolean): Result<Shader> {
 		let shouldLinkPlaygroundModule = RUNNABLE_ENTRY_POINT_NAMES.some((entry_point) => shaderSource.match(entry_point) != null);
 
 		const compileTarget = this.findCompileTarget(compileTargetStr);
@@ -495,11 +470,13 @@ export class SlangCompiler {
 
 			return {
 				succ: true,
-				code: outCode,
-				layout: bindings,
-				hashedStrings: hashedStrings,
-				reflection: reflectionJson,
-				threadGroupSizes: threadGroupSizes,
+				result: {
+					code: outCode,
+					layout: bindings,
+					hashedStrings: hashedStrings,
+					reflection: reflectionJson,
+					threadGroupSizes: threadGroupSizes,
+				}
 			};
 		} catch (e) {
 			// typescript is missing the type for WebAssembly.Exception

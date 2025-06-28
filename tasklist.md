@@ -1,4 +1,3 @@
 - Uniforms
-- Proper error handling
 
 

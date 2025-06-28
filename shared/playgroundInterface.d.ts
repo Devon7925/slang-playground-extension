@@ -88,7 +88,6 @@ export type ReflectionUserAttribute = {
 export type EntrypointsResult = string[]
 
 export type Shader = {
-	succ: true,
 	code: string,
 	layout: Bindings,
 	hashedStrings: HashedStringData,
@@ -96,9 +95,111 @@ export type Shader = {
 	threadGroupSizes: { [key: string]: [number, number, number] },
 };
 
-export type MaybeShader = Shader | {
+export type Result<T> = {
+	succ: true,
+	result: T
+} | {
 	succ: false,
 	message: string
+};
+
+export type UniformController = { buffer_offset: number } & ({
+	type: "SLIDER",
+	name: string,
+	value: number,
+	min: number,
+	max: number,
+} | {
+	type: "COLOR_PICK",
+	name: string,
+	value: [number, number, number],
+} | {
+	type: "TIME",
+} | {
+	type: "FRAME_ID",
+} | {
+	type: "MOUSE_POSITION",
+} | {
+	type: "KEY",
+	key: string,
+	scalarType: ScalarType,
+})
+
+export type RunnableShaderType = 'imageMain' | 'printMain';
+export type ShaderType = RunnableShaderType | null;
+
+export type CompiledPlayground = {
+	slangSource: string,
+	uri: string,
+	shader: Shader,
+	mainEntryPoint: RunnableShaderType,
+	resourceCommands: ResourceCommand[],
+	callCommands: CallCommand[],
+	uniformSize: number,
+	uniformComponents: UniformController[],
+}
+
+export type ParsedCommand = {
+	"type": "ZEROS",
+	"count": number,
+	"elementSize": number,
+} | {
+	"type": "RAND",
+	"count": number,
+} | {
+	"type": "BLACK",
+	"width": number,
+	"height": number,
+} | {
+	"type": "BLACK_SCREEN",
+	"width_scale": number,
+	"height_scale": number,
+} | {
+	"type": "URL",
+	"url": string,
+	"format": GPUTextureFormat,
+} | {
+	"type": "SLIDER",
+	"default": number,
+	"min": number,
+	"max": number,
+	"elementSize": number,
+	"offset": number,
+} | {
+	"type": "COLOR_PICK",
+	"default": [number, number, number],
+	"elementSize": number,
+	"offset": number,
+} | {
+	"type": "TIME",
+	"offset": number,
+} | {
+	"type": "FRAME_ID",
+	"offset": number,
+} | {
+	"type": "MOUSE_POSITION",
+	"offset": number,
+} | {
+	"type": "KEY",
+	key: string,
+	offset: number,
+	scalarType: ScalarType,
+} | {
+	"type": "SAMPLER"
+};
+
+export type ResourceCommand = { resourceName: string; parsedCommand: ParsedCommand; };
+export type CallCommand = {
+	type: "RESOURCE_BASED",
+	fnName: string,
+	resourceName: string,
+	elementSize?: number,
+	callOnce?: boolean,
+} | {
+	type: "FIXED_SIZE",
+	fnName: string,
+	size: number[],
+	callOnce?: boolean,
 };
 
 export type PlaygroundRun = {

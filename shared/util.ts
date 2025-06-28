@@ -1,8 +1,6 @@
-import type { HashedStringData, ScalarType, ReflectionJSON, SlangFormat, ReflectionType } from './playgroundInterface.js'
+import type { HashedStringData, ScalarType, ReflectionJSON, SlangFormat, ReflectionType, CallCommand, UniformController, ResourceCommand, ParsedCommand, Result } from './playgroundInterface.js'
 
 export const RUNNABLE_ENTRY_POINT_NAMES = ['imageMain', 'printMain'] as const;
-export type RunnableShaderType = typeof RUNNABLE_ENTRY_POINT_NAMES[number];
-export type ShaderType = RunnableShaderType | null;
 
 export class NotReadyError extends Error {
     constructor(message: string) {
@@ -200,56 +198,7 @@ function getSize(reflectionType: ReflectionType): number {
 /**
  * See help panel for details on commands
  */
-export type ParsedCommand = {
-    "type": "ZEROS",
-    "count": number,
-    "elementSize": number,
-} | {
-    "type": "RAND",
-    "count": number,
-} | {
-    "type": "BLACK",
-    "width": number,
-    "height": number,
-} | {
-    "type": "BLACK_SCREEN",
-    "width_scale": number,
-    "height_scale": number,
-} | {
-    "type": "URL",
-    "url": string,
-    "format": GPUTextureFormat,
-} | {
-    "type": "SLIDER",
-    "default": number,
-    "min": number,
-    "max": number,
-    "elementSize": number,
-    "offset": number,
-} | {
-    "type": "COLOR_PICK",
-    "default": [number, number, number],
-    "elementSize": number,
-    "offset": number,
-} | {
-    "type": "TIME",
-    "offset": number,
-} | {
-    "type": "FRAME_ID",
-    "offset": number,
-} | {
-    "type": "MOUSE_POSITION",
-    "offset": number,
-} | {
-    "type": "KEY",
-    key: string,
-    offset: number,
-    scalarType: ScalarType,
-} | {
-    "type": "SAMPLER"
-};
-export type ResourceCommand = { resourceName: string; parsedCommand: ParsedCommand; };
-export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): ResourceCommand[] {
+export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): Result<ResourceCommand[]> {
     let commands: { resourceName: string, parsedCommand: ParsedCommand }[] = [];
 
     for (let parameter of reflection.parameters) {
@@ -262,7 +211,10 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
             let playground_attribute_name = attribute.name.slice(11);
             if (playground_attribute_name == "ZEROS") {
                 if (parameter.type.kind != "resource" || parameter.type.baseShape != "structuredBuffer") {
-                    throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports buffers`)
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports buffers`,
+                    };
                 }
                 command = {
                     type: playground_attribute_name,
@@ -271,17 +223,26 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
                 };
             } else if (playground_attribute_name == "SAMPLER") {
                 if (parameter.type.kind != "samplerState") {
-                    throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports samplers`);
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports samplers`,
+                    };
                 }
                 command = {
                     type: playground_attribute_name
                 };
             } else if (playground_attribute_name == "RAND") {
                 if (parameter.type.kind != "resource" || parameter.type.baseShape != "structuredBuffer") {
-                    throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports buffers`)
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports buffers`,
+                    };
                 }
                 if (parameter.type.resultType.kind != "scalar" || parameter.type.resultType.scalarType != "float32") {
-                    throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports float buffers`)
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports float buffers`,
+                    };
                 }
                 command = {
                     type: playground_attribute_name,
@@ -289,7 +250,10 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
                 };
             } else if (playground_attribute_name == "BLACK") {
                 if (parameter.type.kind != "resource" || parameter.type.baseShape != "texture2D") {
-                    throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports 2D textures`)
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports 2D textures`,
+                    };
                 }
                 command = {
                     type: playground_attribute_name,
@@ -298,7 +262,10 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
                 };
             } else if (playground_attribute_name == "BLACK_SCREEN") {
                 if (parameter.type.kind != "resource" || parameter.type.baseShape != "texture2D") {
-                    throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports 2D textures`)
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports 2D textures`,
+                    };
                 }
                 command = {
                     type: playground_attribute_name,
@@ -307,7 +274,10 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
                 };
             } else if (playground_attribute_name == "URL") {
                 if (parameter.type.kind != "resource" || parameter.type.baseShape != "texture2D") {
-                    throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports 2D textures`)
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports 2D textures`,
+                    };
                 }
                 let slangAccess: keyof typeof ACCESS_MAP = parameter.type.access || "read";
                 let access = ACCESS_MAP[slangAccess];
@@ -319,10 +289,16 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
                     scalarType = parameter.type.resultType.scalarType;
                 } else if (parameter.type.resultType.kind == "vector") {
                     componentCount = parameter.type.resultType.elementCount;
-                    if (parameter.type.resultType.elementType.kind != "scalar") throw new Error(`Unhandled inner type for ${name}`)
+                    if (parameter.type.resultType.elementType.kind != "scalar") return {
+                        succ: false,
+                        message: `Unhandled inner type for ${name}`,
+                    };
                     scalarType = parameter.type.resultType.elementType.scalarType;
                 } else {
-                    throw new Error(`Unhandled inner type for ${name}`)
+                    return {
+                        succ: false,
+                        message: `Unhandled inner type for ${name}`,
+                    };
                 }
 
                 let format: GPUTextureFormat;
@@ -333,9 +309,15 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
                         format = getTextureFormat(componentCount, scalarType, access);
                     } catch (e) {
                         if (e instanceof Error)
-                            throw new Error(`Could not get texture format for ${name}: ${e.message}`)
+                            return {
+                        succ: false,
+                        message: `Could not get texture format for ${name}: ${e.message}`,
+                    };
                         else
-                            throw new Error(`Could not get texture format for ${name}`)
+                            return {
+                        succ: false,
+                        message: `Could not get texture format for ${name}`,
+                    };
                     }
                 }
 
@@ -346,7 +328,10 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
                 };
             } else if (playground_attribute_name == "TIME") {
                 if (parameter.type.kind != "scalar" || !parameter.type.scalarType.startsWith("float") || parameter.binding.kind != "uniform") {
-                    throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports floats`)
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports floats`,
+                    };
                 }
                 command = {
                     type: playground_attribute_name,
@@ -354,7 +339,10 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
                 };
             } else if (playground_attribute_name == "FRAME_ID") {
                 if (parameter.type.kind != "scalar" || !parameter.type.scalarType.startsWith("float") || parameter.binding.kind != "uniform") {
-                    throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports floats`)
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports floats`,
+                    };
                 }
                 command = {
                     type: playground_attribute_name,
@@ -362,7 +350,10 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
                 };
             } else if (playground_attribute_name == "MOUSE_POSITION") {
                 if (parameter.type.kind != "vector" || parameter.type.elementCount <= 3 || parameter.type.elementType.kind != "scalar" || !parameter.type.elementType.scalarType.startsWith("float") || parameter.binding.kind != "uniform") {
-                    throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports float vectors`)
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports float vectors`,
+                    };
                 }
                 command = {
                     type: playground_attribute_name,
@@ -370,7 +361,10 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
                 };
             } else if (playground_attribute_name == "SLIDER") {
                 if (parameter.type.kind != "scalar" || !parameter.type.scalarType.startsWith("float") || parameter.binding.kind != "uniform") {
-                    throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports floats`)
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports floats`,
+                    };
                 }
                 command = {
                     type: playground_attribute_name,
@@ -382,7 +376,10 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
                 };
             } else if (playground_attribute_name == "COLOR_PICK") {
                 if (parameter.type.kind != "vector" || parameter.type.elementCount <= 2 || parameter.type.elementType.kind != "scalar" || !parameter.type.elementType.scalarType.startsWith("float") || parameter.binding.kind != "uniform") {
-                    throw new Error(`${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports float vectors`)
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute cannot be applied to ${parameter.name}, it only supports float vectors`,
+                    };
                 }
                 command = {
                     type: playground_attribute_name,
@@ -393,10 +390,16 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
             } else if (playground_attribute_name == "KEY") {
                 // Only allow on scalar uniforms (float or int)
                 if (parameter.type.kind != "scalar" || parameter.binding.kind != "uniform") {
-                    throw new Error(`${playground_attribute_name} attribute can only be applied to scalar uniforms`);
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute can only be applied to scalar uniforms`,
+                    };
                 }
                 if (!attribute.arguments || attribute.arguments.length !== 1 || typeof attribute.arguments[0] !== "string") {
-                    throw new Error(`${playground_attribute_name} attribute requires a single string argument (the key name)`);
+                    return {
+                        succ: false,
+                        message: `${playground_attribute_name} attribute requires a single string argument (the key name)`,
+                    };
                 }
                 command = {
                     type: playground_attribute_name,
@@ -415,7 +418,10 @@ export function getResourceCommandsFromAttributes(reflection: ReflectionJSON): R
         }
     }
 
-    return commands
+    return {
+        succ: true,
+        result: commands,
+    };
 }
 
 export function getUniformSize(reflection: ReflectionJSON): number {
@@ -428,28 +434,6 @@ export function getUniformSize(reflection: ReflectionJSON): number {
 
     return roundUpToNearest(size, 16)
 }
-
-export type UniformController = { buffer_offset: number } & ({
-    type: "SLIDER",
-    name: string,
-    value: number,
-    min: number,
-    max: number,
-} | {
-    type: "COLOR_PICK",
-    name: string,
-    value: [number, number, number],
-} | {
-    type: "TIME",
-} | {
-    type: "FRAME_ID",
-} | {
-    type: "MOUSE_POSITION",
-} | {
-    type: "KEY",
-    key: string,
-    scalarType: ScalarType,
-})
 
 export function isControllerRendered(controller: UniformController) {
     return controller.type == "SLIDER" || controller.type == "COLOR_PICK";
@@ -501,20 +485,7 @@ export function getUniformControllers(resourceCommands: ResourceCommand[]): Unif
     return controllers;
 }
 
-export type CallCommand = {
-    type: "RESOURCE_BASED",
-    fnName: string,
-    resourceName: string,
-    elementSize?: number,
-    callOnce?: boolean,
-} | {
-    type: "FIXED_SIZE",
-    fnName: string,
-    size: number[],
-    callOnce?: boolean,
-};
-
-export function parseCallCommands(reflection: ReflectionJSON): CallCommand[] {
+export function parseCallCommands(reflection: ReflectionJSON): Result<CallCommand[]> {
     const callCommands: CallCommand[] = [];
 
     for (let entryPoint of reflection.entryPoints) {
@@ -530,7 +501,10 @@ export function parseCallCommands(reflection: ReflectionJSON): CallCommand[] {
                 const resourceReflection = reflection.parameters.find((param) => param.name === resourceName);
 
                 if (!resourceReflection) {
-                    throw new Error(`Cannot find resource ${resourceName} for ${fnName} CALL command`)
+                    return {
+                        succ: false,
+                        message: `Cannot find resource ${resourceName} for ${fnName} CALL command`,
+                    };
                 }
 
                 let elementSize: number | undefined = undefined;
@@ -539,7 +513,10 @@ export function parseCallCommands(reflection: ReflectionJSON): CallCommand[] {
                 }
 
                 if (callCommand != null) {
-                    throw new Error(`Multiple CALL commands found for ${fnName}`);
+                    return {
+                        succ: false,
+                        message: `Multiple CALL commands found for ${fnName}`,
+                    };
                 }
                 callCommand = {
                     type: "RESOURCE_BASED",
@@ -549,7 +526,10 @@ export function parseCallCommands(reflection: ReflectionJSON): CallCommand[] {
                 };
             } else if (attribute.name === "playground_CALL") {
                 if (callCommand != null) {
-                    throw new Error(`Multiple CALL commands found for ${fnName}`);
+                    return {
+                        succ: false,
+                        message: `Multiple CALL commands found for ${fnName}`,
+                    };
                 }
                 callCommand = {
                     type: "FIXED_SIZE",
@@ -558,7 +538,10 @@ export function parseCallCommands(reflection: ReflectionJSON): CallCommand[] {
                 };
             } else if (attribute.name === "playground_CALL_ONCE") {
                 if (callOnce) {
-                    throw new Error(`Multiple CALL ONCE commands found for ${fnName}`);
+                    return {
+                        succ: false,
+                        message: `Multiple CALL ONCE commands found for ${fnName}`,
+                    };
                 }
                 callOnce = true;
             }
@@ -572,7 +555,10 @@ export function parseCallCommands(reflection: ReflectionJSON): CallCommand[] {
         }
     }
 
-    return callCommands;
+    return {
+        succ: true,
+        result: callCommands
+    };
 }
 
 type FormatSpecifier = {
