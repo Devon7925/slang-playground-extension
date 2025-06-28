@@ -9,6 +9,8 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import createModule from '../../media/slang-wasm.js';
 import type { LanguageServer, MainModule, CompletionContext } from '../../media/slang-wasm';
+import createSpirvModule from '../../media/spirv-tools.js';
+import type { SpirvTools } from '../../media/spirv-tools';
 import type { CompilationResult, CompileRequest, EntrypointsRequest, EntrypointsResult, ServerInitializationOptions } from '../../shared/playgroundInterface';
 import playgroundSource from "./slang/playground.slang";
 
@@ -16,6 +18,7 @@ import playgroundSource from "./slang/playground.slang";
 let slangd: LanguageServer;
 let compiler: SlangCompiler;
 let slangWasmModule: MainModule;
+let spirvWasmModule: SpirvTools;
 
 
 // Helper to resolve the correct URL for the WASM and JS files
@@ -71,7 +74,6 @@ const messageWriter = new BrowserMessageWriter(self);
 const connection = createConnection(messageReader, messageWriter);
 
 // // Dynamically import the WASM module and set up the language server
-let moduleReady: Promise<void> | null = null;
 let initializationOptions: ServerInitializationOptions;
 
 function loadFileIntoEmscriptenFS(uri: string, content: string) {
@@ -131,7 +133,9 @@ function modifyEmscriptenFile(uri: string, changes: TextDocumentContentChangeEve
 	slangWasmModule.FS.writeFile(uri, content);
 }
 
+let moduleReady: Promise<void> | null = null;
 async function ensureSlangModuleLoaded() {
+	if (slangd) return;
 	if (moduleReady) return moduleReady;
 	moduleReady = (async () => {
 		// Instantiate the WASM module and create the language server
@@ -144,6 +148,17 @@ async function ensureSlangModuleLoaded() {
 		slangd = slangWasmModule.createLanguageServer()!;
 	})();
 	return moduleReady;
+}
+
+let spirvModuleReady: Promise<void> | null = null;
+async function ensureSpirvModuleLoaded() {
+	if(spirvWasmModule) return;
+	if (spirvModuleReady) return spirvModuleReady;
+	spirvModuleReady = (async () => {
+		// Instantiate the WASM module and create the language server
+		spirvWasmModule = await createSpirvModule();
+	})();
+	return spirvModuleReady;
 }
 
 /* from here on, all code is non-browser specific and could be shared with a regular extension */
@@ -361,7 +376,25 @@ connection.onDidChangeTextDocument(async (params) => {
 
 connection.onRequest('slang/compile', async (params: CompileRequest): Promise<CompilationResult> => {
 	let path = getEmscriptenURI(params.shaderPath);
-	return compiler.compile(params.sourceCode, path, params.entrypoint, params.target, params.noWebGPU)
+	let compilation = compiler.compile(params.sourceCode, path, params.entrypoint, params.target, params.noWebGPU);
+	if(!compilation) return null;// todo improve error handling
+	if(params.target === "SPIRV") {
+		await ensureSpirvModuleLoaded();
+        let disAsmCode = spirvWasmModule.dis(
+            compilation[0] as any,// todo improve typing
+            spirvWasmModule.SPV_ENV_UNIVERSAL_1_3,
+            spirvWasmModule.SPV_BINARY_TO_TEXT_OPTION_INDENT |
+            spirvWasmModule.SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES
+        );
+
+
+        if (disAsmCode == "Error") {
+			return null;// todo improve error handling
+        }
+
+		compilation[0] = disAsmCode;
+	}
+	return compilation;
 });
 
 connection.onRequest('slang/entrypoints', async (params: EntrypointsRequest): Promise<EntrypointsResult> => {

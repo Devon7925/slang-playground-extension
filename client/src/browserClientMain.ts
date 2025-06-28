@@ -12,12 +12,16 @@ import type { CompilationResult, CompileRequest, EntrypointsRequest, Entrypoints
 import { checkShaderType } from "../../shared/util.js";
 
 let client: LanguageClient;
-const compileOptions = ['HLSL', 'GLSL', 'METAL', 'WGSL', 'CUDA'] as const;
+const compileOptions = ['SPIRV', 'HLSL', 'GLSL', 'METAL', 'WGSL', 'CUDA'] as const;
 type LanguageOptions = {
 	languageId: string,
 	requiresEntrypoint: boolean,
 }
 const compileOptionMap: { [k in (typeof compileOptions)[number]]: LanguageOptions } = {
+	SPIRV: {
+		languageId: 'spirv',
+		requiresEntrypoint: false,
+	},
 	HLSL: {
 		languageId: 'hlsl',
 		requiresEntrypoint: true,
