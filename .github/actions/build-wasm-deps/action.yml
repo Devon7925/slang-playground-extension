@@ -27,6 +27,17 @@ runs:
         fi
         git -C slang-repo rev-parse HEAD > key.txt
 
+    - name: get spirv-tool head commit
+      shell: bash
+      run: |
+        if [ ! -d "spirv-tools" ]; then
+          git clone https://github.com/KhronosGroup/SPIRV-Tools.git spirv-tools
+          pushd spirv-tools
+          git checkout vulkan-sdk-1.3.290.0
+          popd
+        fi
+        git -C spirv-tools rev-parse HEAD > key-spirv-tool.txt
+
     - name: restore slang-wasm
       id: cache_slang
       uses: actions/cache/restore@v4
@@ -35,6 +46,15 @@ runs:
           ./slang-wasm.js
           ./slang-wasm.d.ts
         key: ${{ hashFiles('key.txt') }}
+
+    - name: restore spirv-tools
+      id: cache_spirv_tools
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ./spirv-tools.js
+          ./spirv-tools.d.ts
+        key: ${{ hashFiles('key-spirv-tool.txt') }}
 
     - name: slang-wasm build
       if: steps.cache_slang.outputs.cache-hit != 'true'
@@ -51,8 +71,24 @@ runs:
           ./slang-wasm.d.ts
         key: ${{ hashFiles('key.txt') }}
 
+    - name: spirv-tools-wasm build
+      if: steps.cache_spirv_tools.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        /bin/bash -x ./build_scripts/spirv-tool-wasm-build.sh
+
+    - name: save spirv-tools-wasm
+      if: steps.cache_spirv_tools.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ./spirv-tools.js
+          ./spirv-tools.d.ts
+        key: ${{ hashFiles('key-spirv-tool.txt') }}
+
     - name: Move artifacts
       shell: bash
       run: |
         mkdir -p ${{ inputs.build-artifacts-dir }}
         mv ./slang-wasm.js ./slang-wasm.d.ts ${{ inputs.build-artifacts-dir }}/
+        mv ./spirv-tools.js ./spirv-tools.d.ts ${{ inputs.build-artifacts-dir }}/
