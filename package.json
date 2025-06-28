@@ -51,6 +51,11 @@
                 "category": "Slang",
                 "enablement": "editorLangId == slang",
                 "icon": "$(search)"
+            },
+            {
+                "command": "slang.playgroundDocumentation",
+                "title": "Show Playground Documentation",
+                "category": "Slang"
             }
         ],
         "menus": {

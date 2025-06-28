@@ -207,6 +207,11 @@ export async function activate(context: ExtensionContext) {
 			vscode.languages.setTextDocumentLanguage(doc, "json");
 		});
 	}));
+
+	context.subscriptions.push(commands.registerCommand('slang.playgroundDocumentation', async () => {
+		const mdFile = vscode.Uri.joinPath(context.extensionUri, 'media', 'playgroundDocumentation.md')
+  		await vscode.commands.executeCommand('markdown.showPreviewToSide', mdFile);
+	}));
 }
 
 export async function deactivate(): Promise<void> {
