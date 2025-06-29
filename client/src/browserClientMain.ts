@@ -8,8 +8,8 @@ import * as vscode from 'vscode';
 import { LanguageClientOptions } from 'vscode-languageclient';
 
 import { LanguageClient } from 'vscode-languageclient/browser';
-import type { CompiledPlayground, CompileRequest, EntrypointsRequest, EntrypointsResult, Result, ServerInitializationOptions, Shader } from '../../shared/playgroundInterface';
-import { checkShaderType, getResourceCommandsFromAttributes, getUniformControllers, getUniformSize, parseCallCommands } from "../../shared/util.js";
+import type { CompileRequest, EntrypointsRequest, EntrypointsResult, PlaygroundMessage, Result, ServerInitializationOptions, Shader } from '../../shared/playgroundInterface';
+import { checkShaderType, getResourceCommandsFromAttributes, getUniformControllers, getUniformSize, isControllerRendered, parseCallCommands } from "../../shared/util.js";
 
 let client: LanguageClient;
 const compileOptions = ['SPIRV', 'HLSL', 'GLSL', 'METAL', 'WGSL', 'CUDA'] as const;
@@ -110,13 +110,12 @@ export async function activate(context: ExtensionContext) {
 					retainContextWhenHidden: true,
 				}
 			);
-			panel.webview.html = getPlaygroundWebviewContent(context, panel);
+			panel.webview.html = getWebviewContent(context, panel, 'client/dist/webviewBundle.js', 'client/dist/webviewBundle.css');
 
 			if (shaderType === 'printMain') {
 				const shaderOutputLog = vscode.window.createOutputChannel(`Slang Shader Output (${window.activeTextEditor.document.fileName})`);
 				panel.webview.onDidReceiveMessage(message => {
 					if (message.type === 'log') {
-						console.log(`Shader Output: ${message.text}`);
 						shaderOutputLog.append(message.text);
 						shaderOutputLog.show(true);
 					}
@@ -126,17 +125,55 @@ export async function activate(context: ExtensionContext) {
 				});
 			}
 
-			let message: CompiledPlayground = {
-				slangSource: userSource,
-				callCommands: callCommandResult.result,
-				mainEntryPoint: shaderType,
-				resourceCommands: resourceCommandsResult.result,
-				uniformComponents,
-				uniformSize,
-				shader: compilation,
-				uri: panel.webview.asWebviewUri(userURI).toString(),
+			let message: PlaygroundMessage = {
+				type: "init",
+				payload: {
+					slangSource: userSource,
+					callCommands: callCommandResult.result,
+					mainEntryPoint: shaderType,
+					resourceCommands: resourceCommandsResult.result,
+					uniformComponents,
+					uniformSize,
+					shader: compilation,
+					uri: panel.webview.asWebviewUri(userURI).toString(),
+				},
 			};
 			panel.webview.postMessage(message)
+
+			if(uniformComponents.some(isControllerRendered)) {
+				const uniform_panel = window.createWebviewPanel(
+					'slangPlaygroundUniforms',
+					'Slang Playground Uniforms',
+					vscode.ViewColumn.Beside,
+					{
+						enableScripts: true,
+						retainContextWhenHidden: true,
+					}
+				);
+				uniform_panel.webview.html = getWebviewContent(context, uniform_panel, "client/dist/uniformWebviewBundle.js", "client/dist/uniformWebviewBundle.css");
+				uniform_panel.webview.onDidReceiveMessage(uniform_message => {
+					console.log("uniform update:", uniform_message)
+					if (uniform_message.type === 'update') {
+						let playground_message: PlaygroundMessage = {
+							type: "uniformUpdate",
+							payload: uniform_message.data,
+						};
+						panel.webview.postMessage(playground_message)
+					}
+				});
+				uniform_panel.webview.postMessage({
+					type: "init",
+					uniformComponents,
+				})
+
+				panel.onDidDispose(() => {
+					try {
+						uniform_panel.dispose()
+					} catch {
+						// ignore if panel was already disposed
+					}
+				})
+			}
 		})
 	);
 	// Register a virtual document content provider for readonly docs
@@ -268,10 +305,10 @@ function createWorkerLanguageClient(context: ExtensionContext, clientOptions: La
 	return new LanguageClient('lsp-web-extension-sample', 'LSP Web Extension Sample', clientOptions, worker);
 }
 
-export function getPlaygroundWebviewContent(context: ExtensionContext, panel: vscode.WebviewPanel): string {
+export function getWebviewContent(context: ExtensionContext, panel: vscode.WebviewPanel, scriptPath: string, stylePath: string): string {
 	// Webview HTML with script tag for the esbuild webview bundle
-	const webviewMain = panel.webview.asWebviewUri(Uri.joinPath(context.extensionUri, 'client/dist/webviewBundle.js'));
-	const webviewStyle = panel.webview.asWebviewUri(Uri.joinPath(context.extensionUri, 'client/dist/webviewBundle.css'));
+	const webviewMain = panel.webview.asWebviewUri(Uri.joinPath(context.extensionUri, scriptPath));
+	const webviewStyle = panel.webview.asWebviewUri(Uri.joinPath(context.extensionUri, stylePath));
 	return `
 	<!DOCTYPE html>
 	<html lang="en">

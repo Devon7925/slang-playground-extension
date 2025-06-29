@@ -50,6 +50,21 @@ async function buildAll() {
 			plugins: [vuePlugin()],
 			external: [],
 		});
+
+		// Build uniform webview bundle
+		await esbuild.build({
+			entryPoints: ['uniform_webview/src/app.ts'],
+			bundle: true,
+			outfile: 'client/dist/uniformWebviewBundle.js',
+			platform: 'browser',
+			sourcemap: true,
+			target: ['es2022'],
+			format: 'esm',
+			tsconfig: 'uniform_webview/tsconfig.json',
+			define: { 'process.env.NODE_ENV': '"production"' },
+			plugins: [vuePlugin()],
+			external: [],
+		});
 	} catch (err) {
 		// Use globalThis.console for ESM compatibility
 		if (typeof globalThis.console !== 'undefined') {

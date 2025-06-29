@@ -2,7 +2,7 @@
 import { ComputePipeline } from './compute';
 import { GraphicsPipeline, passThroughshaderCode } from './pass_through';
 import { NotReadyError, parsePrintfBuffer, sizeFromFormat, isWebGPUSupported } from '../../shared/util';
-import type { Bindings, CallCommand, CompiledPlayground, ResourceCommand, RunnableShaderType, ShaderType } from '../../shared/playgroundInterface';
+import type { Bindings, CallCommand, CompiledPlayground, PlaygroundMessage, ResourceCommand, RunnableShaderType, ShaderType } from '../../shared/playgroundInterface';
 import { onMounted, ref, useTemplateRef, type Ref } from 'vue';
 
 let fileUri: string;
@@ -76,11 +76,15 @@ function toggleFullscreen() {
 let queuedPlaygroundRunData: CompiledPlayground | undefined = undefined;
 
 window.addEventListener('message', event => {
-    const playgroundRunData: CompiledPlayground = event.data;
-    if(device != undefined)
-        onRun(playgroundRunData)
-    else
-        queuedPlaygroundRunData = playgroundRunData
+    const playgroundRunData: PlaygroundMessage = event.data;
+    if(playgroundRunData.type == "init") {
+        if(device != undefined)
+            onRun(playgroundRunData.payload)
+        else
+            queuedPlaygroundRunData = playgroundRunData.payload
+    } else if(playgroundRunData.type == "uniformUpdate") {
+        compiledCode.uniformComponents = playgroundRunData.payload;
+    }
 });
 
 onMounted(async () => {

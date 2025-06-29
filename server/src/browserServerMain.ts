@@ -319,7 +319,6 @@ function openPlayground(wasmURI: string) {
 	loadedPlaygroundFiles.add(playgroundURI);
 	slangd.didOpenTextDocument(playgroundURI, playgroundSource);
 	loadFileIntoEmscriptenFS(emscriptenPlaygroundURI, playgroundSource);
-	console.log("Loading playground file " + playgroundURI);
 }
 
 connection.onDidOpenTextDocument(async (params) => {

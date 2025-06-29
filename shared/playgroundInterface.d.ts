@@ -139,6 +139,14 @@ export type CompiledPlayground = {
 	uniformComponents: UniformController[],
 }
 
+export type PlaygroundMessage = {
+	type: "init",
+	payload: CompiledPlayground,
+} | {
+	type: "uniformUpdate",
+	payload: UniformController[],
+}
+
 export type ParsedCommand = {
 	"type": "ZEROS",
 	"count": number,
