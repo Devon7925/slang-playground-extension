@@ -4,11 +4,11 @@
  *--------------------------------------------------------------------------------------------*/
 import { createConnection, BrowserMessageReader, BrowserMessageWriter } from 'vscode-languageserver/browser';
 
-import { InitializeParams, InitializeResult, TextDocuments, TextDocumentSyncKind, MarkupKind, DocumentSymbol, Location, SignatureHelp, CompletionItemKind, CompletionItem, SignatureInformation, ParameterInformation, TextDocumentContentChangeEvent, Diagnostic } from 'vscode-languageserver';
+import { InitializeParams, InitializeResult, TextDocuments, TextDocumentSyncKind, MarkupKind, DocumentSymbol, Location, SignatureHelp, CompletionItemKind, CompletionItem, SignatureInformation, ParameterInformation, TextDocumentContentChangeEvent, Diagnostic, SymbolKind } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import createModule from '../../media/slang-wasm.js';
-import type { LanguageServer, MainModule, CompletionContext } from '../../media/slang-wasm';
+import type { LanguageServer, MainModule, CompletionContext, DocumentSymbol as WasmDocumentSymbol } from '../../media/slang-wasm';
 import createSpirvModule from '../../media/spirv-tools.js';
 import type { SpirvTools } from '../../media/spirv-tools';
 import type { CompileRequest, EntrypointsRequest, EntrypointsResult, Result, ServerInitializationOptions, Shader } from '../../shared/playgroundInterface';
@@ -37,10 +37,10 @@ function getEmscriptenURI(uri: string): string {
 }
 
 function getSlangdURI(uri: string): string {
-    return `file://${getEmscriptenURI(uri)}`;
+    return `file:///${getEmscriptenURI(uri)}`;
 }
 
-function convertDocumentSymbol(sym: any): DocumentSymbol {
+function convertDocumentSymbol(sym: WasmDocumentSymbol): DocumentSymbol {
     let children: DocumentSymbol[] = [];
     if (sym.children && typeof sym.children.size === 'function' && typeof sym.children.get === 'function') {
         for (let j = 0; j < sym.children.size(); j++) {
@@ -51,17 +51,15 @@ function convertDocumentSymbol(sym: any): DocumentSymbol {
         children = sym.children.map(convertDocumentSymbol);
     }
     return {
-        name: sym.name?.toString?.() ?? '',
-        detail: sym.detail?.toString?.() ?? '',
-        kind: sym.kind,
+        name: sym.name.toString(),
+        detail: sym.detail.toString(),
+        kind: sym.kind as SymbolKind,
         range: sym.range,
         selectionRange: sym.selectionRange,
-        children
+        children,
     };
 }
 
-
-/* browser specific setup code */
 
 const messageReader = new BrowserMessageReader(self);
 const messageWriter = new BrowserMessageWriter(self);
@@ -253,11 +251,7 @@ connection.onDefinition(async (params, _token) => {
 
         let vscodeURI = loc.uri.toString();
         vscodeURI = removePrefix(vscodeURI, "file:///");
-        if(protocol != "") {
-            connection.console.log(`protocol: ${protocol}`)
-            connection.console.log(`uri: ${vscodeURI}`)
-            vscodeURI = `${protocol}${vscodeURI}`;
-        }
+        vscodeURI = `${protocol}${vscodeURI}`;
         arr.push({
             ...loc,
             uri: vscodeURI,
@@ -328,6 +322,30 @@ function openPlayground(wasmURI: string) {
     loadFileIntoEmscriptenFS(emscriptenPlaygroundURI, playgroundSource);
 }
 
+function reportDiagnostics(uri: string) {
+    const wasmURI = getSlangdURI(uri)
+    const diagnostics = slangd.getDiagnostics(wasmURI);
+    if (!diagnostics) {
+        console.warn(`No diagnostics found for ${wasmURI}`);
+        connection.sendDiagnostics({ uri, diagnostics: [] });
+        return;
+    }
+    const lspDiagnostics: Diagnostic[] = [];
+    for (let i = 0; i < diagnostics.size(); i++) {
+        const d = diagnostics.get(i);
+        if (!d) continue;
+        lspDiagnostics.push({
+            range: d.range,
+            message: d.message.toString(),
+            severity: d.severity as DiagnosticSeverity,
+            code: d.code.toString(),
+            source: 'slang',
+        });
+    }
+    connection.sendDiagnostics({ uri, diagnostics: lspDiagnostics });
+
+}
+
 connection.onDidOpenTextDocument(async (params) => {
     const uri = params.textDocument.uri;
     const wasmURI = getSlangdURI(uri);
@@ -335,7 +353,8 @@ connection.onDidOpenTextDocument(async (params) => {
     loadFileIntoEmscriptenFS(emscriptenURI, params.textDocument.text);
     slangd.didOpenTextDocument(wasmURI, params.textDocument.text);
 
-    openPlayground(wasmURI)
+    openPlayground(wasmURI);
+    reportDiagnostics(uri);
 });
 // Diagnostics (textDocument/didChange, didOpen, didClose handled by TextDocuments)
 connection.onDidChangeTextDocument(async (params) => {
@@ -343,41 +362,24 @@ connection.onDidChangeTextDocument(async (params) => {
     const wasmURI = getSlangdURI(uri)
     const emscriptenURI = getEmscriptenURI(uri);
     modifyEmscriptenFile(emscriptenURI, params.contentChanges);
-    // Try to call didChangeTextDocument with just the text (if supported)
-    try {
-        // Try to construct a TextEditList as in MonacoEditor.vue
-        let lspChanges = null;
-        lspChanges = new slangWasmModule.TextEditList();
-        for (const change of params.contentChanges) {
-            if (TextDocumentContentChangeEvent.isIncremental(change))
-                lspChanges.push_back(change);
-            else
-                console.error("Change should be incremental but isn't")
-        }
-        slangd.didChangeTextDocument(wasmURI, lspChanges);
-        if (lspChanges.delete) lspChanges.delete();
-        const diagnostics = slangd.getDiagnostics?.(wasmURI);
-        if (!diagnostics || typeof diagnostics.size !== 'function' || typeof diagnostics.get !== 'function') {
-            connection.sendDiagnostics({ uri, diagnostics: [] });
-            return;
-        }
-        const lspDiagnostics: Diagnostic[] = [];
-        for (let i = 0; i < diagnostics.size(); i++) {
-            const d = diagnostics.get(i);
-            if (!d) continue;
-            lspDiagnostics.push({
-                range: d.range,
-                message: d.message?.toString?.() ?? '',
-                severity: typeof d.severity === 'number' ? (d.severity as DiagnosticSeverity) : DiagnosticSeverity.Error,
-                code: d.code?.toString?.() ?? '',
-                source: 'slang',
-            });
-        }
-        connection.sendDiagnostics({ uri, diagnostics: lspDiagnostics });
-    } catch (e) {
-        console.error(e)
-        connection.sendDiagnostics({ uri, diagnostics: [] });
+    let lspChanges = null;
+    lspChanges = new slangWasmModule.TextEditList();
+    for (const change of params.contentChanges) {
+        if (TextDocumentContentChangeEvent.isIncremental(change))
+            lspChanges.push_back(change);
+        else
+            console.error("Change should be incremental but isn't")
     }
+    slangd.didChangeTextDocument(wasmURI, lspChanges);
+    if (lspChanges.delete) lspChanges.delete();
+    reportDiagnostics(uri);
+});
+
+connection.onDidCloseTextDocument(async (params) => {
+    const uri = params.textDocument.uri;
+    const wasmURI = getSlangdURI(uri);
+
+    slangd.didCloseTextDocument(wasmURI);
 });
 
 connection.onRequest('slang/compile', async (params: CompileRequest): Promise<Result<Shader>> => {
