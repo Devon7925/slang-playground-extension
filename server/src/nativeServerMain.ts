@@ -1,20 +1,11 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-import { createConnection, BrowserMessageReader, BrowserMessageWriter } from 'vscode-languageserver/browser';
 
-import { InitializeParams, TextDocuments, TextDocumentContentChangeEvent } from 'vscode-languageserver';
-import { TextDocument } from 'vscode-languageserver-textdocument';
-
-import createModule from '../../media/slang-wasm.js';
-import type { MainModule } from '../../media/slang-wasm.js';
-import type { CompileRequest, EntrypointsRequest, EntrypointsResult, Result, ServerInitializationOptions, Shader, WorkerRequest } from '../../shared/playgroundInterface.js';
+import createModule from '../../media/slang-wasm.node.js';
+import type { MainModule } from '../../media/slang-wasm.node.js';
+import type { EntrypointsRequest, ServerInitializationOptions, WorkerRequest } from '../../shared/playgroundInterface.js';
 import playgroundSource from "./slang/playground.slang";
 import { SlangCompiler } from './compiler.js';
 import { modifyEmscriptenFile, getEmscriptenURI, getSlangdURI, removePrefix } from './lspSharedUtils.js';
 import { parentPort } from 'worker_threads';
-
 // We'll set these after dynamic import
 let compiler: SlangCompiler;
 let slangWasmModule: MainModule;

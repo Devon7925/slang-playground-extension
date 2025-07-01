@@ -1,14 +1,10 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
 import { createConnection, BrowserMessageReader, BrowserMessageWriter } from 'vscode-languageserver/browser';
 
 import { InitializeParams, InitializeResult, TextDocuments, TextDocumentSyncKind, MarkupKind, DocumentSymbol, Location, SignatureHelp, CompletionItemKind, CompletionItem, SignatureInformation, ParameterInformation, TextDocumentContentChangeEvent, Diagnostic, SymbolKind } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-import createModule from '../../media/slang-wasm.js';
-import type { LanguageServer, MainModule, CompletionContext, DocumentSymbol as WasmDocumentSymbol } from '../../media/slang-wasm';
+import createModule from '../../media/slang-wasm.worker.js';
+import type { LanguageServer, MainModule, CompletionContext, DocumentSymbol as WasmDocumentSymbol } from '../../media/slang-wasm.worker';
 import type { CompileRequest, EntrypointsRequest, EntrypointsResult, Result, ServerInitializationOptions, Shader } from '../../shared/playgroundInterface';
 import playgroundSource from "./slang/playground.slang";
 import { DiagnosticSeverity } from 'vscode-languageserver';

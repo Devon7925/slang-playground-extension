@@ -105,7 +105,7 @@ sed -i '/^[[:space:]]*target_link_options(/,/^[[:space:]]*)/c\
         "--bind"\
         --emit-tsd "$<TARGET_FILE_DIR:slang-wasm>/slang-wasm.d.ts"\
         -sMODULARIZE=1\
-        -sEXPORT_ES6=1\
+        -sEXPORT_ES6=0\
         -sSINGLE_FILE=1\
         -sENVIRONMENT="node"\
         -sEXPORTED_RUNTIME_METHODS=['FS']\
