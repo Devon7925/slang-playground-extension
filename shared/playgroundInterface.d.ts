@@ -1,3 +1,5 @@
+import { TextDocumentContentChangeEvent } from 'vscode-languageserver';
+
 export type CompileRequest = {
 	target: 'SPIRV' | 'HLSL' | 'GLSL' | 'METAL' | 'WGSL' | 'CUDA',
 	entrypoint: string,
@@ -215,3 +217,31 @@ export type PlaygroundRun = {
 	ret: Shader,
 	uri: string,
 }
+
+type WorkerRequest = {
+    type: 'Initialize',
+    initializationOptions: ServerInitializationOptions,
+} | {
+    type: 'DidOpenTextDocument',
+    textDocument: {
+        uri: string,
+        text: string,
+    }
+} | {
+    type: 'DidChangeTextDocument',
+    textDocument: {
+        uri: string,
+    },
+    contentChanges: TextDocumentContentChangeEvent[],
+} | {
+    type: 'slang/compile',
+    sourceCode: string,
+    shaderPath: string,
+    entrypoint: string,
+    target: string,
+    noWebGPU: boolean
+} | {
+    type: 'slang/entrypoints',
+    sourceCode: string,
+    shaderPath: string
+};

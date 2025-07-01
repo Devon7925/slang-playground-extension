@@ -9,36 +9,16 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import createModule from '../../media/slang-wasm.js';
 import type { LanguageServer, MainModule, CompletionContext, DocumentSymbol as WasmDocumentSymbol } from '../../media/slang-wasm';
-import createSpirvModule from '../../media/spirv-tools.js';
-import type { SpirvTools } from '../../media/spirv-tools';
 import type { CompileRequest, EntrypointsRequest, EntrypointsResult, Result, ServerInitializationOptions, Shader } from '../../shared/playgroundInterface';
 import playgroundSource from "./slang/playground.slang";
+import { DiagnosticSeverity } from 'vscode-languageserver';
+import { SlangCompiler } from './compiler';
+import { modifyEmscriptenFile, getEmscriptenURI, getSlangdURI, removePrefix } from './lspSharedUtils.js';
 
 // We'll set these after dynamic import
 let slangd: LanguageServer;
 let compiler: SlangCompiler;
 let slangWasmModule: MainModule;
-let spirvWasmModule: SpirvTools;
-
-
-// Helper to resolve the correct URL for the WASM and JS files
-function removePrefix(data: string, prefix: string): string {
-    if (data.startsWith(prefix))
-        data = data.slice(prefix.length)
-    return data;
-}
-
-function getEmscriptenURI(uri: string): string {
-    uri = uri.replace(/^([a-zA-Z\-]+:\/\/\/?)/, ""); // remove protocol
-    for (const workspaceUri in initializationOptions.workspaceUris) {
-        uri = removePrefix(uri, workspaceUri.replaceAll('\\', '/').replaceAll(':', '%3A'));
-    }
-    return uri;
-}
-
-function getSlangdURI(uri: string): string {
-    return `file:///${getEmscriptenURI(uri)}`;
-}
 
 function convertDocumentSymbol(sym: WasmDocumentSymbol): DocumentSymbol {
     let children: DocumentSymbol[] = [];
@@ -82,49 +62,6 @@ function loadFileIntoEmscriptenFS(uri: string, content: string) {
     slangWasmModule.FS.writeFile(uri, content);
 }
 
-function applyIncrementalChange(
-    text: string,
-    change: TextDocumentContentChangeEvent
-): string {
-    if (!TextDocumentContentChangeEvent.isIncremental(change)) {
-        return change.text;
-    }
-    const lines = text.split('\n');
-
-    const startLine = change.range.start.line;
-    const startChar = change.range.start.character;
-    const endLine = change.range.end.line;
-    const endChar = change.range.end.character;
-
-    const before = lines.slice(0, startLine);
-    const after = lines.slice(endLine + 1);
-
-    const startLineText = lines[startLine] ?? '';
-    const endLineText = lines[endLine] ?? '';
-
-    const prefix = startLineText.substring(0, startChar);
-    const suffix = endLineText.substring(endChar);
-
-    const newLines = (change.text || '').split('\n');
-    const middle = [...newLines];
-    if (middle.length > 0) {
-        middle[0] = prefix + middle[0];
-        middle[middle.length - 1] = middle[middle.length - 1] + suffix;
-    }
-
-    return [...before, ...middle, ...after].join('\n');
-}
-
-function modifyEmscriptenFile(uri: string, changes: TextDocumentContentChangeEvent[]) {
-    // Ensure directory exists
-
-    let content = slangWasmModule.FS.readFile(uri).toString();
-    for (const change of changes) {
-        content = applyIncrementalChange(content, change)
-    }
-    slangWasmModule.FS.writeFile(uri, content);
-}
-
 let moduleReady: Promise<void> | null = null;
 async function ensureSlangModuleLoaded() {
     if (slangd) return;
@@ -142,17 +79,6 @@ async function ensureSlangModuleLoaded() {
     return moduleReady;
 }
 
-let spirvModuleReady: Promise<void> | null = null;
-async function ensureSpirvModuleLoaded() {
-    if (spirvWasmModule) return;
-    if (spirvModuleReady) return spirvModuleReady;
-    spirvModuleReady = (async () => {
-        // Instantiate the WASM module and create the language server
-        spirvWasmModule = await createSpirvModule();
-    })();
-    return spirvModuleReady;
-}
-
 /* from here on, all code is non-browser specific and could be shared with a regular extension */
 
 connection.onInitialize(async (_params: InitializeParams): Promise<InitializeResult> => {
@@ -167,7 +93,7 @@ connection.onInitialize(async (_params: InitializeParams): Promise<InitializeRes
     }
 
     for (const file of initializationOptions.files) {
-        const emscriptenURI = getEmscriptenURI(file.uri);
+        const emscriptenURI = getEmscriptenURI(file.uri, initializationOptions.workspaceUris);
         loadFileIntoEmscriptenFS(emscriptenURI, file.content);
     }
 
@@ -190,10 +116,8 @@ documents.listen(connection);
 // --- LSP Handlers ---
 
 // Completion
-import { DiagnosticSeverity } from 'vscode-languageserver';
-import { SlangCompiler } from './compiler';
 connection.onCompletion(async (params, _token, _progress): Promise<CompletionItem[]> => {
-    const wasmURI = getSlangdURI(params.textDocument.uri);
+    const wasmURI = getSlangdURI(params.textDocument.uri, initializationOptions.workspaceUris);
     let lspContext: CompletionContext = {
         triggerKind: params.context!.triggerKind,
         triggerCharacter: params.context?.hasOwnProperty("triggerCharacter") ? (params.context?.triggerCharacter || "") : ""
@@ -221,7 +145,7 @@ connection.onCompletion(async (params, _token, _progress): Promise<CompletionIte
 
 // Hover
 connection.onHover(async (params, _token) => {
-    const wasmURI = getSlangdURI(params.textDocument.uri);
+    const wasmURI = getSlangdURI(params.textDocument.uri, initializationOptions.workspaceUris);
     const result = slangd.hover(wasmURI, params.position);
     if (!result) return null;
     return {
@@ -239,7 +163,7 @@ connection.onDefinition(async (params, _token) => {
     const uri = params.textDocument.uri;
     const protocolMatch = uri.match(/^([a-zA-Z\-]+:\/\/\/?)/);
     const protocol = protocolMatch ? protocolMatch[1] : '';
-    const wasmURI = getSlangdURI(uri);
+    const wasmURI = getSlangdURI(uri, initializationOptions.workspaceUris);
 
     const result = slangd.gotoDefinition(wasmURI, params.position);
     if (!result) return null;
@@ -262,7 +186,7 @@ connection.onDefinition(async (params, _token) => {
 
 // Signature Help
 connection.onSignatureHelp(async (params, _token): Promise<SignatureHelp | null> => {
-    const wasmURI = getSlangdURI(params.textDocument.uri);
+    const wasmURI = getSlangdURI(params.textDocument.uri, initializationOptions.workspaceUris);
     const result = slangd.signatureHelp(wasmURI, params.position);
     if (!result) return null;
 
@@ -295,7 +219,7 @@ connection.onSignatureHelp(async (params, _token): Promise<SignatureHelp | null>
 
 // Document Symbols
 connection.onDocumentSymbol(async (params, _token) => {
-    const wasmURI = getSlangdURI(params.textDocument.uri);
+    const wasmURI = getSlangdURI(params.textDocument.uri, initializationOptions.workspaceUris);
     const result = slangd.documentSymbol(wasmURI);
     if (!result || typeof result.size !== 'function' || typeof result.get !== 'function') return [];
     const symbols = [];
@@ -323,7 +247,7 @@ function openPlayground(wasmURI: string) {
 }
 
 function reportDiagnostics(uri: string) {
-    const wasmURI = getSlangdURI(uri)
+    const wasmURI = getSlangdURI(uri, initializationOptions.workspaceUris)
     const diagnostics = slangd.getDiagnostics(wasmURI);
     if (!diagnostics) {
         console.warn(`No diagnostics found for ${wasmURI}`);
@@ -348,8 +272,8 @@ function reportDiagnostics(uri: string) {
 
 connection.onDidOpenTextDocument(async (params) => {
     const uri = params.textDocument.uri;
-    const wasmURI = getSlangdURI(uri);
-    const emscriptenURI = getEmscriptenURI(uri);
+    const wasmURI = getSlangdURI(uri, initializationOptions.workspaceUris);
+    const emscriptenURI = getEmscriptenURI(uri, initializationOptions.workspaceUris);
     loadFileIntoEmscriptenFS(emscriptenURI, params.textDocument.text);
     slangd.didOpenTextDocument(wasmURI, params.textDocument.text);
 
@@ -359,9 +283,9 @@ connection.onDidOpenTextDocument(async (params) => {
 // Diagnostics (textDocument/didChange, didOpen, didClose handled by TextDocuments)
 connection.onDidChangeTextDocument(async (params) => {
     const uri = params.textDocument.uri;
-    const wasmURI = getSlangdURI(uri)
-    const emscriptenURI = getEmscriptenURI(uri);
-    modifyEmscriptenFile(emscriptenURI, params.contentChanges);
+    const wasmURI = getSlangdURI(uri, initializationOptions.workspaceUris)
+    const emscriptenURI = getEmscriptenURI(uri, initializationOptions.workspaceUris);
+    modifyEmscriptenFile(emscriptenURI, params.contentChanges, slangWasmModule);
     let lspChanges = null;
     lspChanges = new slangWasmModule.TextEditList();
     for (const change of params.contentChanges) {
@@ -377,39 +301,18 @@ connection.onDidChangeTextDocument(async (params) => {
 
 connection.onDidCloseTextDocument(async (params) => {
     const uri = params.textDocument.uri;
-    const wasmURI = getSlangdURI(uri);
+    const wasmURI = getSlangdURI(uri, initializationOptions.workspaceUris);
 
     slangd.didCloseTextDocument(wasmURI);
 });
 
 connection.onRequest('slang/compile', async (params: CompileRequest): Promise<Result<Shader>> => {
-    let path = getEmscriptenURI(params.shaderPath);
-    let compilation = compiler.compile(params.sourceCode, path, params.entrypoint, params.target, params.noWebGPU);
-    if (compilation.succ == false) return compilation;
-    if (params.target === "SPIRV") {
-        await ensureSpirvModuleLoaded();
-        let disAsmCode = spirvWasmModule.dis(
-            compilation.result.code as any,// todo improve typing
-            spirvWasmModule.SPV_ENV_UNIVERSAL_1_3,
-            spirvWasmModule.SPV_BINARY_TO_TEXT_OPTION_INDENT |
-            spirvWasmModule.SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES
-        );
-
-
-        if (disAsmCode == "Error") {
-            return {
-                succ: false,
-                message: "Failed to get spirv string representation"
-            };
-        }
-
-        compilation.result.code = disAsmCode;
-    }
-    return compilation;
+    let path = getEmscriptenURI(params.shaderPath, initializationOptions.workspaceUris);
+    return compiler.compile(params.sourceCode, path, params.entrypoint, params.target, params.noWebGPU);
 });
 
 connection.onRequest('slang/entrypoints', async (params: EntrypointsRequest): Promise<EntrypointsResult> => {
-    let path = getEmscriptenURI(params.shaderPath);
+    let path = getEmscriptenURI(params.shaderPath, initializationOptions.workspaceUris);
     return compiler.findDefinedEntryPoints(params.sourceCode, path)
 });
 

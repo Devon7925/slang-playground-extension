@@ -28,6 +28,7 @@
     "activationEvents": [
         "onLanguage:slang"
     ],
+    "main": "./client/dist/nativeClientMain",
     "browser": "./client/dist/browserClientMain",
     "contributes": {
         "commands": [
@@ -104,26 +105,105 @@
                 "path": "./syntaxes/slang.tmLanguage.json"
             }
         ],
-        "configuration": [
-            {
-                "order": 22,
-                "id": "lsp-web-extension-sample",
-                "title": "lsp-web-extension-sample",
-                "properties": {
-                    "lsp-web-extension-sample.trace.server": {
-                        "type": "string",
-                        "scope": "window",
-                        "enum": [
-                            "off",
-                            "messages",
-                            "verbose"
-                        ],
-                        "default": "verbose",
-                        "description": "Traces the communication between VS Code and the lsp-web-extension-sample language server."
-                    }
+        "configuration": {
+            "type": "object",
+            "title": "Slang/HLSL",
+            "properties": {
+                "slang.predefinedMacros": {
+                    "scope": "window",
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "examples": [["MY_MACRO", "MY_VALUE_MACRO=1"]],
+                    "default": [],
+                    "markdownDescription": "Predefined macros to use in the language server. Each item contains one macro definition. You can also use `macro_name=value` syntax to specify the value of the macro."
+                },
+                "slang.searchInAllWorkspaceDirectories": {
+                    "scope": "window",
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Controls whether or not the language server should look in all sub-directories in the current workspace for an include or imported file if it is not found in the explicitly specified search paths."
+                },
+                "slang.additionalSearchPaths": {
+                    "scope": "window",
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "examples": [["include/", "c:\\external-lib\\include"]],
+                    "default": [],
+                    "description": "The language server will search for the included or imported file in these additional directories first. If not found, the server will look in all sub directories in the current workspace (if enabled by the setting)."
+                },
+                "slang.enableCommitCharactersInAutoCompletion": {
+                    "scope": "window",
+                    "type": "string",
+                    "enum": [
+                        "off",
+                        "membersOnly",
+                        "on"
+                    ],
+                    "default": "membersOnly",
+                    "markdownDescription": "Controls whether or not to enable commit characters for selecting an auto completion item in addition to pressing enter. 'off' - disabled. 'memberOnly' - use commit characters in a member list only. 'on' - use commit characters for all types of completions."
+                },
+                "slang.format.clangFormatLocation": {
+                    "scope": "machine-overridable",
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "The location of clang-format for auto formatting, including the executable name. If left unspecified, will attempt to find `clang-format` under `PATH`, or under C++ extension installation path."
+                },
+                "slang.slangdLocation": {
+                    "scope": "machine-overridable",
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "The location of Slang's language server executable `slangd`. Will use bundled language server when unspecified."
+                },
+                "slang.format.clangFormatStyle": {
+                    "scope": "window",
+                    "type": "string",
+                    "default": "file",
+                    "markdownDescription": "The `-style` argument to pass to clang-format, without quotes. Examples: `Microsoft`, `LLVM`, `file:fileName`. Default value is `file`"
+                },
+                "slang.format.clangFormatFallbackStyle": {
+                    "scope": "window",
+                    "type": "string",
+                    "default": "{BasedOnStyle: Microsoft, BreakBeforeBraces: Allman, ColumnLimit: 0}",
+                    "markdownDescription": "The `-fallback-style` argument to pass to clang-format, without quotes. Examples: `Microsoft`, `LLVM`, `file:fileName`. Default value is `{BasedOnStyle: Microsoft, BreakBeforeBraces: Allman, ColumnLimit: 0}`"
+                },
+                "slang.format.allowLineBreakChangesInOnTypeFormatting":
+                {
+                    "scope": "window",
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "Controls whether the extension is allowed to make line-break changes when reformatting the code on typing."
+                },
+                "slang.format.allowLineBreakChangesInRangeFormatting": {
+                    "scope": "window",
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "Controls whether the extension is allowed to make line-break changes when doing range formatting, such as formatting on paste or on command."
+                },
+                "slang.inlayHints.deducedTypes": {
+                    "scope": "window",
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Enable inlay hints for duduced decl types, e.g. the deduced type in `var i = 2`"
+                },
+                "slang.inlayHints.parameterNames": {
+                    "scope": "window",
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable inlay hints for parameter names at call sites."
+                },
+                "slangLanguageServer.trace.server": {
+                    "scope": "window",
+                    "type": "string",
+                    "enum": [
+                        "off",
+                        "messages",
+                        "verbose"
+                    ],
+                    "default": "off",
+                    "description": "Traces the communication between VS Code and the language server."
                 }
             }
-        ],
+        },
         "keybindings": [
             {
                 "command": "slang.compile",
@@ -146,6 +226,7 @@
         "chrome": "npm run compile && vscode-test-web --browserType=chromium --browserOption=--enable-unsafe-webgpu --extensionDevelopmentPath=. ./test-data"
     },
     "devDependencies": {
+        "@types/node": "^24.0.8",
         "@vscode/test-web": "^0.0.70",
         "esbuild": "^0.25.5",
         "esbuild-plugin-vue3": "^0.4.2",

@@ -4,6 +4,8 @@ import imageMainSource from "./slang/imageMain.slang";
 import printMainSource from "./slang/printMain.slang";
 import { ACCESS_MAP, getTextureFormat, webgpuFormatfromSlangFormat, RUNNABLE_ENTRY_POINT_NAMES } from "../../shared/util.js";
 import type { HashedStringData, ScalarType, ReflectionParameter, ReflectionJSON, Bindings, RunnableShaderType, ShaderType, Shader, Result } from '../../shared/playgroundInterface.js'
+import spirvTools from '../../media/spirv-tools.js';
+import type { SpirvTools } from '../../media/spirv-tools';
 
 export function isWholeProgramTarget(compileTarget: string) {
 	return compileTarget == "METAL" || compileTarget == "SPIRV" || compileTarget == "WGSL";
@@ -28,7 +30,7 @@ export class SlangCompiler {
 	diagnosticsMsg;
 	shaderType: ShaderType;
 
-	// spirvToolsModule: SpirvTools | null = null;
+	spirvToolsModule: SpirvTools | null = null;
 
 	mainModules: Map<string, { source: EmbindString }> = new Map();
 
@@ -103,6 +105,31 @@ export class SlangCompiler {
 			return entryPoint;
 		}
 	}
+
+    async initSpirvTools() {
+        if (!this.spirvToolsModule) {
+            this.spirvToolsModule = await spirvTools();
+        }
+    }
+
+    spirvDisassembly(spirvBinary: any) {
+        if (!this.spirvToolsModule)
+            throw new Error("Spirv tools not initialized");
+        let disAsmCode = this.spirvToolsModule.dis(
+            spirvBinary,
+            this.spirvToolsModule.SPV_ENV_UNIVERSAL_1_3,
+            this.spirvToolsModule.SPV_BINARY_TO_TEXT_OPTION_INDENT |
+            this.spirvToolsModule.SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES
+        );
+
+
+        if (disAsmCode == "Error") {
+            this.diagnosticsMsg += ("SPIRV disassembly error");
+            disAsmCode = "";
+        }
+
+        return disAsmCode;
+    }
 
 	// If user code defines imageMain or printMain, we will know the entry point name because they're
 	// already defined in our pre-built module. So we will add those one of those entry points to the
@@ -416,8 +443,7 @@ export class SlangCompiler {
 				const spirvCode = linkedProgram.getTargetCodeBlob(
 					0 /* targetIndex */
 				);
-				// outCode = this.spirvDisassembly(spirvCode);
-				outCode = spirvCode
+				outCode = this.spirvDisassembly(spirvCode);
 			}
 			else {
 				if (isWholeProgram)

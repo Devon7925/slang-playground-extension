@@ -10,6 +10,7 @@
 		"sourceMap": true,
 		"types": [
 			"@webgpu/types",
+			"@types/node",
 		]
 	},
 	"include": [
