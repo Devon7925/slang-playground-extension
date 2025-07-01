@@ -108,7 +108,7 @@ sed -i '/^[[:space:]]*target_link_options(/,/^[[:space:]]*)/c\
         -sEXPORT_ES6=1\
         -sSINGLE_FILE=1\
         -sENVIRONMENT="node"\
-        -sEXPORTED_RUNTIME_METHODS=[\\'FS\\']\
+        -sEXPORTED_RUNTIME_METHODS=['FS']\
     )' "source/slang-wasm/CMakeLists.txt"
 
 if ! emcmake cmake -DSLANG_GENERATORS_PATH=generators/bin --preset emscripten -DSLANG_ENABLE_RELEASE_LTO=OFF
