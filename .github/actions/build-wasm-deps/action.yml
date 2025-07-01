@@ -45,6 +45,10 @@ runs:
         path: |
           ./slang-wasm.js
           ./slang-wasm.d.ts
+          ./slang-wasm.worker.js
+          ./slang-wasm.worker.d.ts
+          ./slang-wasm.node.js
+          ./slang-wasm.node.d.ts
         key: ${{ hashFiles('key.txt') }}
 
     - name: restore spirv-tools
@@ -69,6 +73,10 @@ runs:
         path: |
           ./slang-wasm.js
           ./slang-wasm.d.ts
+          ./slang-wasm.worker.js
+          ./slang-wasm.worker.d.ts
+          ./slang-wasm.node.js
+          ./slang-wasm.node.d.ts
         key: ${{ hashFiles('key.txt') }}
 
     - name: spirv-tools-wasm build
@@ -90,5 +98,5 @@ runs:
       shell: bash
       run: |
         mkdir -p ${{ inputs.build-artifacts-dir }}
-        mv ./slang-wasm.js ./slang-wasm.d.ts ${{ inputs.build-artifacts-dir }}/
+        mv ./slang-wasm.js ./slang-wasm.d.ts ./slang-wasm.worker.js ./slang-wasm.worker.d.ts ./slang-wasm.node.js ./slang-wasm.node.d.ts ${{ inputs.build-artifacts-dir }}/
         mv ./spirv-tools.js ./spirv-tools.d.ts ${{ inputs.build-artifacts-dir }}/

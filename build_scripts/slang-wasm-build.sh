@@ -46,7 +46,7 @@ sed -i '/^[[:space:]]*target_link_options(/,/^[[:space:]]*)/c\
         -sMODULARIZE=1\
         -sEXPORT_ES6=1\
     	-sSINGLE_FILE=1\
-  		-sENVIRONMENT=['node', 'worker']\
+  		-sENVIRONMENT="worker"\
         -sEXPORTED_RUNTIME_METHODS=['FS']\
     )' "source/slang-wasm/CMakeLists.txt"
 
@@ -81,16 +81,52 @@ fi
 cp build/CMakeCache.txt ../../CMakeCache.txt
 cp build.em/CMakeCache.txt ../../CMakeCache.em.txt
 
-echo "[$(date)] Build slang as wasm ..."
+# --- Build for Web Worker (default) ---
+echo "[$(date)] Build slang as wasm (web worker) ..."
 if ! cmake --build --preset emscripten --target slang-wasm
 then
-	echo "Build with CMake failed."
-	exit 1
+    echo "Build with CMake failed (web worker)."
+    exit 1
 fi
 
 popd
 
-cp slang-repo/build.em/Release/bin/* ./
+# Copy and rename output for web worker
+cp slang-repo/build.em/Release/bin/slang-wasm.js slang-wasm.worker.js
+cp slang-repo/build.em/Release/bin/slang-wasm.d.ts slang-wasm.worker.d.ts
+# Also keep the default (web worker) as slang-wasm.js/d.ts for backward compatibility
+cp slang-wasm.worker.js slang-wasm.js
+cp slang-wasm.worker.d.ts slang-wasm.d.ts
+
+# --- Build for Node.js ---
+pushd slang-repo
+sed -i '/^[[:space:]]*target_link_options(/,/^[[:space:]]*)/c\
+    target_link_options(slang-wasm PUBLIC\
+        "--bind"\
+        --emit-tsd "$<TARGET_FILE_DIR:slang-wasm>/slang-wasm.d.ts"\
+        -sMODULARIZE=1\
+        -sEXPORT_ES6=1\
+        -sSINGLE_FILE=1\
+        -sENVIRONMENT="node"\
+        -sEXPORTED_RUNTIME_METHODS=[\\'FS\\']\
+    )' "source/slang-wasm/CMakeLists.txt"
+
+if ! emcmake cmake -DSLANG_GENERATORS_PATH=generators/bin --preset emscripten -DSLANG_ENABLE_RELEASE_LTO=OFF
+then
+    echo "Error: emcmake failed (node)."
+    exit 1
+fi
+
+if ! cmake --build --preset emscripten --target slang-wasm
+then
+    echo "Build with CMake failed (node)."
+    exit 1
+fi
+popd
+
+# Copy and rename output for node
+cp slang-repo/build.em/Release/bin/slang-wasm.js slang-wasm.node.js
+cp slang-repo/build.em/Release/bin/slang-wasm.d.ts slang-wasm.node.d.ts
 
 git -C ./slang-repo rev-parse HEAD > key.txt
 echo "key: $(cat key.txt)"

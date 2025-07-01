@@ -28,5 +28,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dependencies
-          path: ./dependencies/
+          path: |
+            ./dependencies/slang-wasm.js
+            ./dependencies/slang-wasm.d.ts
+            ./dependencies/slang-wasm.worker.js
+            ./dependencies/slang-wasm.worker.d.ts
+            ./dependencies/slang-wasm.node.js
+            ./dependencies/slang-wasm.node.d.ts
+            ./dependencies/spirv-tools.js
+            ./dependencies/spirv-tools.d.ts
           compression-level: 1
