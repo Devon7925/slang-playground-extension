@@ -1,4 +1,4 @@
-import type { ComponentType, EmbindString, GlobalSession, MainModule, Module, Session } from '../../media/slang-wasm.js';
+import type { ComponentType, EmbindString, GlobalSession, MainModule, Module, Session } from '../../media/slang-wasm.worker.js';
 import playgroundSource from "./slang/playground.slang";
 import imageMainSource from "./slang/imageMain.slang";
 import printMainSource from "./slang/printMain.slang";

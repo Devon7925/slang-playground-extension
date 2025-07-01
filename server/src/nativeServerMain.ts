@@ -13,6 +13,12 @@ let slangWasmModule: MainModule;
 // // Dynamically import the WASM module and set up the language server
 let initializationOptions: ServerInitializationOptions;
 
+globalThis.GPUShaderStage = { // Fix node's lack of support for WebGPU
+    VERTEX: 0x1,
+    FRAGMENT: 0x2,
+    COMPUTE: 0x4,
+};
+
 function loadFileIntoEmscriptenFS(uri: string, content: string) {
     // Ensure directory exists
     const splitPath = uri.split("/")
